@@ -196,4 +196,12 @@ pyrightconfig.json
 
 
 # Claude
-.claude
+*.claude
+
+# Other
+*docs
+task1-ml-models/data/
+runs/
+*.pt
+*.mp4
+.DS_Store
