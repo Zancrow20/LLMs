@@ -1,0 +1,18 @@
+[project]
+name = "llms"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "datasets>=5.0.1",
+    "jiwer>=4.0.0",
+    "lap>=0.5.13",
+    "librosa>=1.0.0",
+    "ollama>=0.6.2",
+    "opencv-python>=5.0.0.93",
+    "scikit-learn>=1.9.1",
+    "soundfile>=0.14.0",
+    "torch>=2.14.0",
+    "torchvision>=0.29.0",
+    "transformers>=5.17.0",
+    "ultralytics>=8.4.163",
+]

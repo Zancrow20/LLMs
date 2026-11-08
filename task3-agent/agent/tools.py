@@ -1,0 +1,49 @@
+"""Тулы агентов. MCP-тулы для media подключаются в разделе 10."""
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+from langchain_core.tools import tool
+from langgraph.types import interrupt
+
+from . import models
+
+WORKSPACE = Path(__file__).resolve().parents[1] / "workspace"
+RISK = {"risky": {"type": "noul",
+                  "instructions": "Код удаляет или перезаписывает файлы, обращается к сети или читает файлы вне workspace"}}
+GATE_THRESHOLD = 0.5
+# Decision-модель недооценивает риск в коде: shutil.rmtree получил 0.13, а русское
+# описание удаления — 0.75 (JOURNAL.md, 2026-11-08). Статические паттерны ловят
+# детерминированные операции, модель — смысловые варианты.
+RISKY_CODE = re.compile(
+    r"os\.(remove|unlink|rmdir)|shutil\.rmtree|os\.system|subprocess"
+    r"|requests\.|urllib|urlopen|socket\.", re.I)
+
+
+def gate(code: str) -> float:
+    """Итоговый риск кода: 1.0 по статическому паттерну, иначе оценка модели."""
+    if RISKY_CODE.search(code):
+        return 1.0
+    return models.decide(code, RISK)["risky"]["noul"]
+
+
+@tool
+def run_python(code: str) -> str:
+    """Выполнить Python-код. Файлы пользователя лежат в workspace/."""
+    risk = gate(code)
+    # при resume граф перезапускает тул с начала, interrupt возвращает ответ пользователя
+    if risk > GATE_THRESHOLD and not interrupt({"code": code, "risk": round(risk, 2)}):
+        return "Пользователь запретил выполнять этот код."
+    # сам агент работает в microVM sbx, код исполняется в той же изолированной VM
+    try:
+        r = subprocess.run([sys.executable, "-c", code], cwd=WORKSPACE,
+                           capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired:
+        return "timeout 30 s"
+    out = (r.stdout + r.stderr)[-4000:]
+    return out if out.strip() else "код выполнен, вывод пуст"
+
+
+MEDIA_TOOLS = []
+ANALYST_TOOLS = [run_python]

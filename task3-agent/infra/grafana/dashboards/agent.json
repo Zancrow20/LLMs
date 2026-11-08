@@ -1,0 +1,81 @@
+{
+  "title": "Медиа-ассистент",
+  "uid": "agent",
+  "schemaVersion": 39,
+  "editable": true,
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Запросов за период",
+      "description": "Каждый CLI-прогон даёт одну точку counter=1 с уникальным instance, поэтому считаем суммой значений, а не increase",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(sum_over_time(agent_requests_total[$__range]))", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "decimals": 0 }, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "type": "barchart",
+      "title": "Запросы по типу задачи",
+      "gridPos": { "h": 6, "w": 16, "x": 8, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "orientation": "auto", "showValue": "auto", "stacking": "off", "xTickLabelRotation": 0 },
+      "targets": [
+        {
+          "expr": "sum by (kind) (sum_over_time(agent_requests_total[$__range]))",
+          "legendFormat": "{{kind}}",
+          "refId": "A",
+          "instant": true,
+          "format": "table"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Латентность p95, с",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (agent_latency_seconds_bucket))",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": { "defaults": { "decimals": 1, "unit": "s" }, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Средняя латентность, с",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(agent_latency_seconds_sum) / sum(agent_latency_seconds_count)",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": { "defaults": { "decimals": 1, "unit": "s" }, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Доля отказов валидатора",
+      "description": "retries суммарно по прогонам; растёт при fail валидатора",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(agent_validator_retries_total)", "refId": "A", "instant": true }
+      ],
+      "fieldConfig": { "defaults": { "decimals": 0 }, "overrides": [] }
+    }
+  ]
+}

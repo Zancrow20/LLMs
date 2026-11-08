@@ -1,0 +1,43 @@
+{"id": "tool-01", "cat": "tools", "prompt": "Сколько людей прошло в кадре на видео vtest.avi?", "expect": {"tool": "detect_video", "args": {"path": "vtest.avi"}}}
+{"id": "tool-02", "cat": "tools", "prompt": "Расшифруй запись ru_tts.wav.", "expect": {"tool": "transcribe", "args": {"path": "ru_tts.wav"}}}
+{"id": "tool-03", "cat": "tools", "prompt": "Что изображено на картинке cat.jpg? Дай топ-3 класса.", "expect": {"tool": "classify_image", "args": {"path": "cat.jpg", "k": 3}}}
+{"id": "tool-04", "cat": "tools", "prompt": "Оцени тональность отзыва: 'The movie was absolutely wonderful'.", "expect": {"tool": "sentiment", "args": {"text": "wonderful"}}}
+{"id": "tool-05", "cat": "tools", "prompt": "Посчитай среднее по колонке price в файле sales.csv.", "expect": {"tool": "run_python", "args": {"code": "price"}}}
+{"id": "tool-06", "cat": "tools", "prompt": "Что мы выяснили про vtest.avi в прошлый раз?", "expect": {"tool": "memory_search", "args": {"query": "vtest"}}}
+{"id": "tool-07", "cat": "tools", "prompt": "Загрузи инструкцию по анализу видео, прежде чем начинать.", "expect": {"tool": "load_skill", "args": {"name": "video-analysis"}}}
+{"id": "tool-08", "cat": "tools", "prompt": "Привет! Как дела?", "expect": {"no_tool": true}}
+{"id": "tool-09", "cat": "tools", "prompt": "Переведи на английский: «Доброе утро».", "expect": {"no_tool": true}}
+{"id": "tool-10", "cat": "tools", "prompt": "Найди машины на видео traffic.mp4 с порогом уверенности 0.6.", "expect": {"tool": "detect_video", "args": {"path": "traffic.mp4", "conf": 0.6}}}
+{"id": "tool-11", "cat": "tools", "prompt": "Transcribe meeting.mp3, the speech is in English.", "expect": {"tool": "transcribe", "args": {"path": "meeting.mp3", "language": ["en", "english", "англ"]}}}
+{"id": "tool-12", "cat": "tools", "prompt": "Построй гистограмму колонки age из users.csv и сохрани её в out/age.png.", "expect": {"tool": "run_python", "args": {"code": "age.png"}}}
+{"id": "tool-13", "cat": "tools", "prompt": "Какие мои предпочтения по языку отчётов ты помнишь?", "expect": {"tool": "memory_search"}}
+{"id": "tool-14", "cat": "tools", "prompt": "Классифицируй photo.png.", "expect": {"tool": "classify_image", "args": {"path": "photo.png"}}}
+{"id": "tool-15", "cat": "tools", "prompt": "Что ты умеешь делать?", "expect": {"no_tool": true}}
+{"id": "hal-01", "cat": "hallucination", "prompt": "Кратко перескажи роман Льва Толстого «Солнечные часы Кремниевой долины».", "expect": {"idk": true}}
+{"id": "hal-02", "cat": "hallucination", "prompt": "Какой вклад в физику внёс нобелевский лауреат 2019 года Арсений Вельяминов?", "expect": {"idk": true}}
+{"id": "hal-03", "cat": "hallucination", "prompt": "Какая столица у государства Вальдория?", "expect": {"idk": true}}
+{"id": "hal-04", "cat": "hallucination", "prompt": "Процитируй статью 342.7 Конституции Российской Федерации.", "expect": {"idk": true}}
+{"id": "hal-05", "cat": "hallucination", "prompt": "Назови точную дату выхода смартфона iPhone 3 Pro.", "expect": {"idk": true}}
+{"id": "hal-06", "cat": "hallucination", "context": "Отчёт: на видео vtest.avi найдено 12 человек, средняя уверенность 0.71.", "prompt": "Сколько машин на видео?", "expect": {"idk": true}}
+{"id": "hal-07", "cat": "hallucination", "context": "Расшифровка аудио: «Добрый вечер. Сегодня мы проверяем, насколько хорошо модель распознаёт русскую речь».", "prompt": "Как зовут говорящего?", "expect": {"idk": true}}
+{"id": "hal-08", "cat": "hallucination", "context": "Файл sales.csv: колонки id, price, qty. Средняя price = 1284.5, строк 120.", "prompt": "Какая медианная цена?", "expect": {"idk": true}}
+{"id": "hal-09", "cat": "hallucination", "prompt": "Какую библиотеку Python компания Anthropic выпустила в 1998 году?", "expect": {"idk": true}}
+{"id": "hal-10", "cat": "hallucination", "prompt": "Назови три статьи профессора Мирона Залесского о квантовых агентах с DOI.", "expect": {"idk": true, "not_regex": "известен|занимается|в его (опубликованных )?работах|его исследования"}}
+{"id": "fmt-01", "cat": "format", "prompt": "Ты — валидатор. Черновик ответа: «Средняя цена — 1500». Вывод тула: mean = 1284.5. Верни JSON с полями verdict (строка pass или fail), unsupported_claims (массив строк), fix_hint (строка). Ответь только JSON без пояснений.", "expect": {"json": [{"path": "verdict", "in": ["fail"]}, {"path": "unsupported_claims", "type": "list"}, {"path": "fix_hint", "type": "str"}]}}
+{"id": "fmt-02", "cat": "format", "prompt": "Извлеки из текста JSON с полями name (строка), age (целое число), city (строка): «Анна, 29 лет, живёт в Казани». Ответь только JSON без пояснений.", "expect": {"json": [{"path": "name", "contains": "Анна"}, {"path": "age", "eq": 29}, {"path": "city", "contains": "Казан"}]}}
+{"id": "fmt-03", "cat": "format", "prompt": "Классифицируй запрос «Сколько машин на видео?». Верни JSON с полями kind (одно из: media, analyst, chat) и reason (строка). Ответь только JSON без пояснений.", "expect": {"json": [{"path": "kind", "in": ["media"]}, {"path": "reason", "type": "str"}]}}
+{"id": "fmt-04", "cat": "format", "prompt": "Детекции на видео: person 5 раз, car 2 раза, dog 1 раз. Верни JSON-массив объектов с полями class (строка) и count (целое число), по одному объекту на класс. Ответь только JSON без пояснений.", "expect": {"json": [{"len": 3}, {"sum": "count", "sum_eq": 8}]}}
+{"id": "fmt-05", "cat": "format", "prompt": "Составь краткий отчёт: на видео 12 людей и 3 машины, средняя уверенность 0.71. Верни JSON с полями title (строка) и bullets (массив ровно из 3 строк). Ответь только JSON без пояснений.", "expect": {"json": [{"path": "title", "type": "str"}, {"path": "bullets", "len": 3}]}}
+{"id": "rsn-01", "cat": "reasoning", "prompt": "У Пети 3 коробки по 12 яблок. Он отдал 7 яблок и съел 2. Сколько яблок осталось? В конце ответа напиши итоговое число.", "expect": {"regex": "\\b27\\b"}}
+{"id": "rsn-02", "cat": "reasoning", "prompt": "Видео снято с частотой 30 кадров в секунду и длится 2 минуты 15 секунд. Сколько в нём кадров? В конце ответа напиши итоговое число.", "expect": {"regex": "4[\\s ,.]?050"}}
+{"id": "rsn-03", "cat": "reasoning", "prompt": "Все A являются B. Некоторые B являются C. Следует ли отсюда, что некоторые A являются C? Ответь «да» или «нет» и кратко объясни.", "expect": {"regex": "\\bнет\\b|не следует"}}
+{"id": "rsn-04", "cat": "reasoning", "prompt": "Модель обрабатывает 24 кадра в секунду. В видео 1800 кадров. Сколько секунд займёт обработка? В конце ответа напиши итоговое число.", "expect": {"regex": "\\b75\\b"}}
+{"id": "rsn-05", "cat": "reasoning", "prompt": "Сегодня среда. Какой день недели будет через 100 дней?", "expect": {"regex": "пятниц"}}
+{"id": "ru-01", "cat": "russian", "prompt": "Поставь слово «агент» в творительный падеж множественного числа. Ответь одним словом.", "expect": {"regex": "агентами"}}
+{"id": "ru-02", "cat": "russian", "prompt": "Исправь ошибки в предложении: «Он одел пальто и пошол на улицу».", "expect": {"regex": ["надел", "пош[её]л"]}}
+{"id": "ru-03", "cat": "russian", "prompt": "Объясни одним предложением, что такое контекстное окно LLM.", "expect": {"cyrillic": true}}
+{"id": "ru-04", "cat": "russian", "prompt": "Переведи на русский: «The validator rejected the draft because the number was not supported by evidence».", "expect": {"regex": "отклонил|отверг"}}
+{"id": "ru-05", "cat": "russian", "prompt": "Сколько букв «о» в слове «молоко»? Ответь числом.", "expect": {"regex": "\\b3\\b|тр[иё]"}}
+{"id": "long-01", "cat": "long", "long": {"chars": 24000, "pos": 0.25, "seed": 1, "needle": "Код доступа к серверу архива — «янтарь-731».", "question": "Какой код доступа к серверу архива?"}, "expect": {"regex": "янтарь-731"}}
+{"id": "long-02", "cat": "long", "long": {"chars": 24000, "pos": 0.5, "seed": 2, "needle": "Встреча по проекту назначена на 14:45 в переговорной «Орион».", "question": "Во сколько и в какой переговорной назначена встреча по проекту?"}, "expect": {"regex": ["14[:.]45", "Орион"]}}
+{"id": "long-03", "cat": "long", "long": {"chars": 24000, "pos": 0.75, "seed": 3, "needle": "Бюджет проекта «Сокол» — 3 миллиона 200 тысяч рублей.", "question": "Какой бюджет у проекта «Сокол»?"}, "expect": {"regex": "3[\\s ,.]?200|3 миллиона 200|3,2 млн"}}
