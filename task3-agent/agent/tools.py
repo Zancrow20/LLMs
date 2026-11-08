@@ -45,5 +45,39 @@ def run_python(code: str) -> str:
     return out if out.strip() else "код выполнен, вывод пуст"
 
 
-MEDIA_TOOLS = []
+def _to_sync(t):
+    """MCP-тулы адаптера только async, а граф зовёт их синхронно — мост."""
+    import asyncio
+
+    from langchain_core.tools import StructuredTool
+
+    def call(**kwargs):
+        return asyncio.run(t.coroutine(**kwargs))
+
+    return StructuredTool(name=t.name, description=t.description,
+                          args_schema=t.args_schema, func=call)
+
+
+def _load_media_tools() -> list:
+    """MCP-тулы задания 1 с хоста. В песочнице — через host.docker.internal."""
+    import asyncio
+    import os
+
+    # локальные адреса мимо HTTP_PROXY (на хосте задан, в песочнице нет)
+    os.environ.setdefault("NO_PROXY", "localhost,127.0.0.1,host.docker.internal")
+    host = "host.docker.internal" if os.environ.get("SANDBOX_NAME") else "localhost"
+    from langchain_mcp_adapters.client import MultiServerMCPClient
+
+    client = MultiServerMCPClient(
+        {"ml": {"url": f"http://{host}:8765/mcp", "transport": "streamable_http"}})
+    return [_to_sync(t) for t in asyncio.run(client.get_tools())]
+
+
+try:
+    MEDIA_TOOLS = _load_media_tools()
+    print(f"[tools] MCP: {len(MEDIA_TOOLS)} тулов")
+except Exception as e:  # сервер не поднят — media-агент остаётся без ML-тулов
+    print(f"[tools] MCP недоступен: {e}")
+    MEDIA_TOOLS = []
+
 ANALYST_TOOLS = [run_python]

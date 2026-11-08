@@ -196,3 +196,25 @@ Langfuse-трейсер внутри VM стучал в `localhost:3000` из с
 **Ключевые промпты для Claude Code**
 
 - «Погнали дальше 9 шаг делать тогда»
+
+---
+
+## 2026-11-08 (ночь). Раздел 10: тулы и MCP
+
+**Сделано**
+
+- MCP-сервер `mcp_ml/server.py` на хосте: 4 тула задания 1 (`transcribe`, `sentiment`, `classify_image`, `detect_video`), порт 8765, `safe()` ограничивает пути `workspace/`, `detect_video` кешируется по (путь, mtime, параметры).
+- Агент грузит тула через `langchain-mcp-adapters` при старте; в песочнице хост — `host.docker.internal`. Запуск сервера: `infra/mcp-ml.sh`.
+- Все 4 тула вызваны из песочницы (`evals/mcp_probe.py`): тональность POSITIVE 0.9998, класс картинки «tench» верный, расшифровка русской речи корректна, на 60 кадрах `vtest.avi` уникальных объектов: 8 человек, машина, грузовик (трекинг).
+- E2E в песочнице: «Что на фото?» → `kind=media`, агент вызвал `classify_image`, ответ «тенч», валидатор вернул черновик на доработку один раз.
+- `safe()`: путь вне `workspace/` даёт ошибку тула (`evals/safe_test.py`).
+- Пользователь подтвердил скрином: алерты firing и resolved пришли в Telegram.
+
+**Проблемы и решения**
+
+Проблема | Решение
+---|---
+`uv add mcp` поставил 2.x: `mcp.server.fastmcp` — shim с ошибкой «FastMCP renamed to MCPServer» | Сервер на `from mcp.server.mcpserver import MCPServer`; host/port передаются в `run(transport=..., host=..., port=...)`
+Тул `transcribe` падал: `TypeError: We expect a numpy ndarray` — transformers 5.x не принимает путь к файлу | Читаю файл через `soundfile`, передаю `{"raw": array, "sampling_rate": sr}`
+Тулы адаптера async-only, граф зовёт их синхронно: `NotImplementedError: StructuredTool does not support sync invocation` | Мост `_to_sync`: `StructuredTool` c `func`, вызывающим `asyncio.run(t.coroutine(**kwargs))`
+Первый `sbx create` без позиционного пути дал песочницу без workspace | Workspace — позиционный аргумент `create`; монтируется по абсолютному пути хоста, не в `~/workspace`

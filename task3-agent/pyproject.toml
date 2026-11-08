@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 dependencies = [
     "httpx>=0.28.1",
     "langchain>=1.4.7",
+    "langchain-mcp-adapters>=0.3.2",
     "langchain-ollama>=1.1.0",
     "langfuse>=5.2.0",
     "langgraph>=1.2.17",
