@@ -4,11 +4,11 @@
 
 Репозиторий: https://github.com/Zancrow20/LLMs
 
-Готовы разделы плана 3–7: окружение, выбор LLM, ТЗ, архитектура, каркас графа и роутинг. Остальные разделы появятся по ходу работы.
+Готовы разделы плана 3–11: окружение, выбор LLM, ТЗ, архитектура, каркас графа и роутинг, observability, песочница, тулы, промпты, persona и скиллы. Остальные разделы появятся по ходу работы.
 
 ## Как запустить
 
-Сейчас работает бенчмарк LLM:
+Бенчмарк LLM:
 
 ```bash
 brew install ollama structurizr
@@ -19,18 +19,21 @@ uv run python task3-agent/evals/llm_bench.py            # все кандида�
 uv run python task3-agent/evals/llm_bench.py --report   # сводная таблица в evals/results/summary.md
 ```
 
-Граф агентов (каркас; тулы media — раздел 10, песочница для `run_python` — раздел 9):
+Инфраструктура и запуск графа агентов в песочнице `sbx`:
 
 ```bash
-cd task3-agent && uv sync
-uv run python -m agent.graph "Что ты умеешь?"     # THREAD=имя — своя ветка короткой памяти
+./task3-agent/infra/lgtm.sh                             # Grafana, Prometheus, Loki, Tempo на :3001
+docker compose -f task3-agent/infra/langfuse/docker-compose.yml up -d   # Langfuse на :3000
+./task3-agent/infra/mcp-ml.sh &                         # MCP-сервер с ML-тулами на :8765
+./task3-agent/infra/agent-sbx.sh                        # поднимает microVM и ставит зависимости
+sbx exec agent -- bash -lc 'cd /Users/zancrow/GitHub/LLMs/task3-agent && UV_PROJECT_ENVIRONMENT=/home/agent/.venv-sbx uv run python -m agent.graph "Что ты умеешь?"'
 ```
 
 ## Ход работы и флоу вайбкодинга
 
 Ход работы, проблемы и решения записаны в [JOURNAL.md](JOURNAL.md).
 
-Код и документы написаны с Claude Code (модель Claude Opus 5.5) в VS Code. Правила для агента-кодера лежат в [CLAUDE.md](../CLAUDE.md): без эмодзи, короткие комментарии, `uv add`, evals перед коммитом. Скиллы и MCP-серверы, ключевые промпты и расход токенов по дням — в журнале.
+Код и документы написаны в связке двух агентов: Claude Code (модель Claude Opus 5.5) в VS Code и Google Antigravity (модель Gemini 4). Antigravity подключён с теми же правилами и скиллами (через `migrate-agent-settings`: `clear-docs`, `adr`, `test-audit`, MCP `codegraph`) и используется для аудита прогресса по ТЗ, доработки телеметрии и документации. Общие правила для агентов лежат в [CLAUDE.md](../CLAUDE.md): без эмодзи, короткие комментарии, `uv add`, evals перед коммитом. Скиллы и MCP-серверы, ключевые промпты и расход токенов по дням — в журнале.
 
 ## ТЗ агента
 
@@ -328,26 +331,34 @@ Decision-модель `strands-decider` (Jev-like, 2.1 ГБ) отвечает в
 
 ### 5.1 Варианты
 
-Вариант | Ядро | На этом Mac | Сетевые политики | Старт | Вердикт
----|---|---|---|---|---
-Процесс, venv | общий с хостом | да | нет | мгновенно | отклонён: код агента выполняется на хосте
-Контейнер Docker | общее с Linux VM Docker Desktop | да | через флаги docker run | секунды | отклонён: обычный контейнер — редфлаг ТЗ
-gVisor | ядро в user space | нет, Linux | да | — | не работает на macOS
-Kata, Firecracker | microVM на KVM | нет, Linux | да | — | не работает на macOS
-E2B | Firecracker, облако | облако | да | секунды | отклонён: код пользователя уходит во внешний сервис
-microsandbox | microVM на libkrun | да | есть | секунды | запасной: политика настраивается вручную
-Apple `container` | VM на контейнер | да | есть | секунды | запасной, то же
-**Docker Sandboxes (`sbx`)** | microVM, своё ядро и Docker-демон | да: macOS 26, Apple silicon | deny-all + allowlist из коробки | секунды | выбран
+Вариант | Ядро | На этом Mac | Сетевые политики | Старт | Лицензия | Вердикт
+---|---|---|---|---|---|---
+Процесс, venv | общее с хостом | да | нет | мгновенно | — | отклонён: код агента выполняется на хосте
+Контейнер Docker / Podman | общее с Linux VM Docker Desktop | да | через флаги запуска | секунды | Apache 2.0 | отклонён: обычный контейнер — редфлаг ТЗ
+gVisor | ядро в user space | нет, Linux | да | — | Apache 2.0 | не работает на macOS
+Kata Containers | microVM на контейнер | нет, Linux / K8s | да | — | Apache 2.0 | не работает на macOS без Linux KVM
+Firecracker | microVM на KVM | нет, Linux | да | миллисекунды | Apache 2.0 | не работает на macOS
+E2B | Firecracker в облаке | облако | да | секунды | Apache 2.0 | отклонён: файлы и код уходят во внешний сервис
+OpenSandbox (`open-sandbox.ai`) | Docker или K8s-рантайм | через Docker | есть | секунды | Apache 2.0 | отклонён: на macOS поверх Docker даёт общее ядро Linux VM
+K8s Agent Sandbox (`kubernetes-sigs`) | по RuntimeClass (gVisor, Kata) | нужен кластер | NetworkPolicy | секунды | Apache 2.0 | отклонён: требует K8s-кластер с Linux-узлами
+Google AX + Agent Substrate | песочницы поверх K8s / gVisor | нужен кластер | NetworkPolicy | секунды | Apache 2.0 | отклонён: распределённый оркестратор избыточен для ноутбука
+kagent (`kagent.dev`) | K8s-поды агентов | нужен кластер | NetworkPolicy | секунды | Apache 2.0 | отклонён: слой оркестрации K8s, не даёт локальной microVM
+Полная VM (UTM, Lima) | своя Linux VM | да | вручную (firewall в VM) | десятки секунд | Apache 2.0 / GPLv2 | отклонён: долгий старт, сетевую политику собирать вручную
+microsandbox | microVM на libkrun | да | есть | секунды | Apache 2.0 | запасной: сетевую политику настраивать вручную
+Apple `container` | VM на контейнер | да: macOS 26 | есть | секунды | Apache 2.0 | запасной, то же
+**Docker Sandboxes (`sbx`)** | microVM, своё ядро и Docker-демон | да: macOS 26, Apple silicon | deny-all + allowlist из коробки | секунды | проприетарная, бесплатная | выбран
 
-`sbx` — проприетарный бесплатный инструмент; исключение из open-source стека. Обоснование: из вариантов, работающих на этом Mac, только `sbx` даёт microVM и готовую сетевую политику (deny-all с allowlist). У open-source альтернатив на macOS (Apple `container`, microsandbox) сетевую политику пришлось бы собирать и проверять вручную.
+`sbx` — проприетарный бесплатный инструмент; исключение из open-source стека. Обоснование: из вариантов, работающих на этом Mac локально, только `sbx` даёт отдельную microVM и готовую сетевую политику (deny-all с allowlist). K8s-решения из ТЗ (`Google AX`, `Agent Substrate`, `kagent`, `K8s Agent Sandbox`, `OpenSandbox`) рассчитаны на серверный Linux-кластер с KVM или gVisor. У open-source альтернатив на macOS (Apple `container`, microsandbox, Lima) сетевую политику пришлось бы собирать и проверять вручную.
 
 ### 5.2 Связка
 
-Агент и `run_python` работают в microVM; Ollama и ML-модели — на хосте: Linux VM на Mac не видит Metal GPU. Из песочницы открыты только хосты: Ollama `:11434`, Langfuse `:3000`, OTLP `:4318`, PyPI (для зависимостей). Файлы пользователя монтируются в VM как workspace; вне монтирования файловая система хоста недоступна.
+Агент и `run_python` работают в microVM; Ollama и ML-модели — на хосте: Linux VM на Mac не видит Metal GPU. Из песочницы открыты только хосты: Ollama `:11434`, MCP `:8765`, Langfuse `:3000`, OTLP `:4318`, PyPI (для установки зависимостей). Файлы пользователя монтируются в VM через virtiofs как `workspace/`; вне монтирования файловая система хоста недоступна.
 
 ### 5.3 Проверки
 
-Изоляция подтверждена четырьмя проверками (вывод реальных команд): ядро VM Linux 7.0.14 против Darwin 25.2.0 у хоста; в домашнем каталоге VM только workspace; исходящий интернет закрыт политикой (403); Ollama на хосте доступна через allowlist. Скрин — `screens/sbx-isolation.png`, команды — `infra/agent-sbx.sh`.
+Изоляция подтверждена четырьмя проверками (вывод реальных команд): ядро VM Linux 7.0.14 против Darwin 25.2.0 у хоста; в домашнем каталоге VM только рабочее окружение; исходящий интернет закрыт политикой (HTTP 403); Ollama на хосте доступна через allowlist. Команды — [infra/agent-sbx.sh](infra/agent-sbx.sh).
+
+![Проверки изоляции в sbx](screens/sbx-isolation.png)
 
 ### 5.4 Гейт рискованного кода
 
@@ -382,3 +393,72 @@ Persona (`persona/`) — семантически наполненные фай�
 Скиллы (`skills/*/SKILL.md`): в системный промпт попадает только каталог name+description; тело загружается тулом `load_skill`. `data-analysis` — скилл дисциплины кода: колонки читать кодом, число существует только если напечатано выводом, ошибка — перезапуск с лимитом 4 вызова. Отказ загрузить несуществующий скилл возвращает список доступных, выход из каталога исключён.
 
 Эмодзи — два барьера: правило «не используй эмодзи» в каждом промпте и фильтр финального ответа с регуляркой из бенчмарка; срабатывание фильтра пишется в Langfuse как score `emoji_filter`.
+
+---
+
+## 8. Observability
+
+### 8.1 Выбор стека
+
+Инструмент | Назначение | Self-host | Лицензия | Решение
+---|---|---|---|---
+**Langfuse** | трейсы LLM, траектории агентов, промпты, токены, scores, datasets | да (Docker Compose) | MIT (кроме папок `ee`) | выбран для LLM-уровня
+**`grafana/otel-lgtm`** (Prometheus, Loki, Tempo, Grafana) | метрики, JSON-логи, инфраструктурные трейсы, дашборды, алерты | да (1 контейнер) | AGPLv3 / Apache 2.0 | выбран для инфраструктурного уровня и алертов
+LangSmith | трейсы и evals для LangChain / LangGraph | только облако или enterprise | проприетарная | отказ: нет бесплатного локального self-host
+Arize Phoenix | трейсы LLM и эксперименты (OpenInference) | да (1 контейнер) | Elastic License 2.0 (не OSI) | запасной вариант: легче Langfuse, но лицензия не входит в список OSI
+Langtrace | трейсы LLM на базе OpenTelemetry | да | Apache 2.0 (часть функций в облаке) | отказ: слабее поддержка datasets и scores, чем у Langfuse
+
+Почему связка Langfuse + `grafana/otel-lgtm`:
+
+- Langfuse показывает специфику LLM: дерево шагов графа, вход и выход каждого промпта, вызовы тулов, расход токенов и числовые оценки (`scores`) на трейсе.
+- Стандартный стек `otel-lgtm` принимает сигналы по OpenTelemetry (`:4318`), хранит временные ряды в Prometheus, структурированные логи в Loki и отправляет алерты в Telegram через Grafana Alerting.
+
+### 8.2 Сигналы и хранение
+
+Сигнал | Что мониторится | Где хранится | Как отправляется
+---|---|---|---
+Траектории и трейсы LLM | шаги графа (`router` -> `orchestrator` -> специалист -> `validator`), промпты, ответы тулов, токены | Langfuse (ClickHouse + Postgres, `:3000`) | `langfuse.langchain.CallbackHandler` (OTel)
+Оценки (`scores`) | `router_hard`, `router_confidence`, `retries`, `latency_s`, `emoji_filter` | Langfuse | `POST /api/public/scores` из `agent/telemetry.py`
+Метрики | `agent_requests_total` (метки `tier`, `kind`, `verdict`), `agent_latency_seconds`, `agent_validator_retries_total` | Prometheus в `otel-lgtm` | `OTLPMetricExporter` (`:4318/v1/metrics`)
+Логи | JSON-события `request_done`, `gate_interrupt`, `emoji_filtered` с `trace_id` и параметрами маршрута (строки обрезаны до 500 символов по NFR-8) | Loki в `otel-lgtm` | `OTLPLogExporter` (`:4318/v1/logs`)
+Алерты | превышение порога латентности (p95 > 60 с) и проверочное правило доставки | Grafana Alerting -> Telegram (`@LLMsTaskBot`) | `infra/telegram-alert.sh`
+
+Общий `trace_id` связывает запись в Loki с деревом выполнения в Langfuse. Код телеметрии — [agent/telemetry.py](agent/telemetry.py), сценарии проверки (T1–T8) — [infra/telemetry-tests.md](infra/telemetry-tests.md). Без ключей или при недоступном коллекторе агент продолжает работу без падения (проверено сценарием T6).
+
+### 8.3 Трейсы, дашборд и алерты
+
+Трейс сценария в Langfuse с деревом узлов графа и чипами score'ов:
+
+![Трейс в Langfuse](screens/langfuse-trace-obs3.png)
+
+Дашборд «Медиа-ассистент» в Grafana (провижининг скриптом [infra/lgtm.sh](infra/lgtm.sh)):
+
+![Дашборд в Grafana](screens/grafana-dashboard.png)
+
+Доставка тестового и рабочего алертов из Grafana в Telegram-бот `@LLMsTaskBot`:
+
+![Алерт в Grafana и Telegram](screens/grafana-telegram-alert.png)
+
+### 8.4 Специфика мониторинга агента
+
+Чем мониторинг агентной системы отличается от мониторинга обычного веб-сервиса:
+
+- **Недетерминированная траектория.** Один запрос порождает разное число вызовов LLM и тулов. Ошибка может возникнуть внутри цепочки (неверный выбор тула, пустой ответ модели после тула, цикл повторов), хотя процесс завершился с кодом 0 и HTTP 200.
+- **Тихая деградация качества.** Галлюцинация, промах роутера или нарушение запрета на эмодзи не дают исключений в коде. Их ловят только содержательные метрики: доля отказов валидатора (`agent_validator_retries_total`), распределение `router_hard`, срабатывания `emoji_filter` и оценки LLM-as-a-Judge.
+- **Неравномерная стоимость и латентность шагов.** Переход с `main` (`gemma4:e4b`, p50 0.4 с) на `heavy` (`gpt-oss:20b`, холодный старт 6.2 с + длинное рассуждение) меняет время ответа на порядок, поэтому метрики обязательно разбиваются по `tier` и `kind`.
+- **Безопасность выполнения.** Вызов `run_python` и срабатывание гейта риска (`gate_interrupt`) требуют аудита самого сгенерированного кода в логах и трейсах.
+
+Разница между базовыми понятиями наблюдаемости в системе:
+
+- **Лог** — отдельная атомарная JSON-запись о событии в момент времени (`request_done`, `gate_interrupt`) в Loki.
+- **Спан (span)** — именованный отрезок времени одной операции (вызов `ChatOllama`, тула `classify_image` или узла `validator`) с её входом, выходом и длительностью.
+- **Трейс (trace)** — дерево всех спанов одного запроса пользователя, объединённых общим `trace_id`.
+- **Траектория** — последовательность решений и действий агента внутри трейса: какой маршрут выбрал роутер, какие тулы и с какими аргументами вызвал специалист, какой вердикт вынес валидатор и понадобился ли повтор.
+
+Что ещё стоит отслеживать при развитии системы:
+
+- дрейф распределения `router_hard` и долю запросов, ушедших на тяжёлую или облачную модель;
+- долю попаданий в кеш видео (`_video_cache` в MCP-сервере) и KV-кеш префикса Ollama;
+- объём RAM процесса Ollama и контейнеров (`docker stats`), вытеснение моделей из Metal GPU;
+- блокировки сетевых запросов в `sbx policy log`;
+- онлайн-оценки качества ответов судьёй (LLM-as-a-Judge) и пользовательский фидбек `/good` и `/bad`.

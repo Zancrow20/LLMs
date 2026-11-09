@@ -155,16 +155,19 @@ def main():
         out = app.invoke({"messages": [HumanMessage(question)]}, config)
         while out.get("__interrupt__"):
             req = out["__interrupt__"][0].value
+            telemetry.log("gate_interrupt", trace_id=h.last_trace_id if h else "", risk=req["risk"], code=req["code"])
             print(f"Гейт: риск {req['risk']}. Код:\n{req['code']}")
             out = app.invoke(Command(resume=input("Выполнить? [y/N] ").strip().lower() == "y"), config)
-        telemetry.record(out, time.perf_counter() - t0, h.last_trace_id if h else None)
+        trace_id = h.last_trace_id if h else None
+        telemetry.record(out, time.perf_counter() - t0, trace_id)
         hard, conf = out["route"]["hard"]["noul"], out["route"]["kind"]["confidence"]
         print(f"[tier={out['tier']} kind={out['kind']} hard={hard:.2f} conf={conf:.2f} "
               f"verdict={out['verdict'].get('verdict')} retries={out['retries']}]")
         answer = out["messages"][-1].content
         if EMOJI.search(answer):  # второй барьер: правило промпта не удержало модель
             answer = EMOJI.sub("", answer).strip()
-            telemetry.send_scores(h.last_trace_id if h else None, {"emoji_filter": 1.0})
+            telemetry.send_scores(trace_id, {"emoji_filter": 1.0})
+            telemetry.log("emoji_filtered", trace_id=trace_id or "")
             print("[emoji filter] сработал на финальном ответе")
         print(answer)
     telemetry.shutdown()

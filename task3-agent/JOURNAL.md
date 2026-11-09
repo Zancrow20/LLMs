@@ -6,9 +6,9 @@
 
 Компонент | Значение
 ---|---
-Агент | Claude Code, расширение VS Code
-Модель | Claude Opus 5.5 (`claude-opus-5-5`)
-Скиллы | `clear-docs` (стиль документации), `artifact-design` и `artifact-diagramming` (HTML-демо), `ponytail` (минимальные решения)
+Агенты | Claude Code (расширение VS Code) и Google Antigravity IDE
+Модели | Claude Opus 5.5 (`claude-opus-5-5`), Gemini 4 (в Antigravity)
+Скиллы | `clear-docs` (стиль документации), `artifact-design` и `artifact-diagramming` (HTML-демо), `ponytail` (минимальные решения), `adr`, `test-audit` (перенесены в Antigravity через `migrate-agent-settings`)
 MCP | codegraph, playwright, chrome-devtools, microsoft-docs, context7
 Правила проекта | `CLAUDE.md` в корне репо
 Подсчёт токенов | `npx ccusage@latest daily`
@@ -231,6 +231,9 @@ Langfuse-трейсер внутри VM стучал в `localhost:3000` из с
 - `load_skill`: тело без frontmatter, несуществующее имя — список доступных, выход из каталога исключён.
 - Фильтр эмодзи в `main()` с score `emoji_filter` в Langfuse (второй барьер).
 - Сценарии в песочнице: «Что ты умеешь?» теперь перечисляет возможности системы (проблема из журнала 2026-10-25 закрыта IDENTITY.md); видео — `verdict=pass`, валидатор подтвердил «42 уникальных человека» по выводу тула.
+- Доработка разделов 8 и 9 по сверке с `Agent ТЗ Осень 26-27.docx`:
+  - `agent/telemetry.py`, `agent/graph.py`: экспорт структурированных JSON-логов (`request_done`, `gate_interrupt`, `emoji_filtered`) с `trace_id` в Loki через `OTLPLogExporter` (`:4318/v1/logs`), обрезка строковых полей до 500 символов (NFR-8), сценарий T8 в `infra/telemetry-tests.md`.
+  - `README.md`: в таблицу изоляции (раздел 5.1) добавлены `OpenSandbox`, `K8s Agent Sandbox`, `Google AX + Agent Substrate`, `kagent`, `UTM/Lima` и колонка лицензий; добавлен раздел 8 (Observability: сравнение стеков, таблица сигналов, встроенные скриншоты, специфика мониторинга агентов).
 
 **Проблемы и решения**
 

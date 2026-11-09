@@ -14,6 +14,7 @@
 
 ```bash
 docker exec lgtm curl -s "http://localhost:9090/api/v1/query?query=sum_over_time(agent_requests_total[1h])"
+docker exec lgtm curl -sG "http://localhost:3100/loki/api/v1/query_range" --data-urlencode 'query={service_name="agent"}'
 ```
 
 ---
@@ -57,6 +58,12 @@ docker exec lgtm curl -s "http://localhost:9090/api/v1/query?query=sum_over_time
 ## T7. Алерт в Telegram
 
 Требует токен бота (BotFather). Проводится после настройки Grafana Alerting.
+
+## T8. Структурированные логи в Loki
+
+1. Прогнать сценарий из песочницы или проверить после T1
+2. В Grafana: Explore, источник Loki, запрос `{service_name="agent"}`
+3. Ожидаемо: JSON-запись `{"event": "request_done", "trace_id": "...", "tier": "...", "kind": "...", "verdict": "...", ...}` с тем же `trace_id`, что у трейса в Langfuse
 
 ## Дашборд
 
