@@ -3,6 +3,7 @@
 Запуск из task3-agent/: uv run python -m agent.graph "вопрос"
 """
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -16,24 +17,35 @@ from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.types import Command
 from typing_extensions import TypedDict
 
-from . import models, telemetry
+from . import models, telemetry, tools
 from .tools import ANALYST_TOOLS, MEDIA_TOOLS
 
 WORKSPACE = Path(__file__).resolve().parents[1] / "workspace"
+ROOT = Path(__file__).resolve().parents[1]
 MAX_RETRIES = 2
 MAX_TOOL_CALLS = 4
 FACTS_THRESHOLD = 0.5
+# тот же класс символов, что в evals/llm_bench.py: правило в промпте не держится на gemma4
+EMOJI = re.compile(r"[\U0001F300-\U0001FAFF\u2600-\u27BF\uFE0F]")
 
-# временные промпты; полные версии — prompts/*.md в разделе 11
-NO_EMOJI = "Не используй эмодзи."
-ORCHESTRATOR = ("Ты — медиа-ассистент. Отвечай по-русски и кратко. "
-                f"Если данных не хватает — скажи «не знаю» и назови, чего не хватает. {NO_EMOJI}")
-MEDIA = f"Ты анализируешь видео, аудио и картинки из workspace/ тулами. Каждое число бери из вывода тула. {NO_EMOJI}"
-ANALYST = ("Ты считаешь по таблицам из workspace/: пишешь Python-код и запускаешь его тулом run_python. "
-           "Используй стандартную библиотеку (csv, statistics), pandas в окружении нет. "
-           f"Числа в ответе бери из вывода кода. {NO_EMOJI}")
-VALIDATOR = ("Ты — валидатор. Сверь каждый факт и число ответа с выводами тулов. "
-             "Если выводов нет — отметь утверждения, которые выглядят выдуманными. Верни JSON по схеме.")
+
+def _read(p: Path) -> str:
+    return p.read_text().strip()
+
+
+def _prompt(name: str, persona_keys: list[str]) -> str:
+    """Persona впереди (неизменная часть — KV-кеш префикса), файл промпта в конец."""
+    parts = [_read(ROOT / "persona" / f"{k}.md") for k in persona_keys]
+    parts.append(_read(ROOT / "prompts" / f"{name}.md"))
+    return "\n\n".join(parts)
+
+
+_PERSONA = {p.stem for p in (ROOT / "persona").glob("*.md")}
+ORCHESTRATOR = _prompt("orchestrator", ["SOUL", "IDENTITY", "AGENTS", "USER"])
+MEDIA = _prompt("media", ["SOUL", "IDENTITY", "TOOLS"]) + "\n\n# Каталог скиллов\n" + tools.skill_catalog()
+ANALYST = _prompt("analyst", ["SOUL", "IDENTITY", "TOOLS"]) + "\n\n# Каталог скиллов\n" + tools.skill_catalog()
+VALIDATOR = _prompt("validator", ["SOUL", "IDENTITY"])
+MEMORY_WRITER = _read(ROOT / "prompts" / "memory_writer.md")  # подключается в разделе 13
 FACTS = {"facts": {"type": "noul", "instructions": "Ответ содержит факты или числа, которые нужно проверить"}}
 # gemma4:e4b на MLX иногда отвечает пустой строкой после результата тула; явная просьба это лечит (JOURNAL.md)
 NUDGE = "Сформулируй ответ на мой вопрос по результату тула."
@@ -116,8 +128,8 @@ def build() -> StateGraph:
     g = StateGraph(State)
     g.add_node("router", route)
     g.add_node("orchestrator", orchestrate)
-    g.add_node("media", specialist(MEDIA_TOOLS, MEDIA))
-    g.add_node("analyst", specialist(ANALYST_TOOLS, ANALYST))
+    g.add_node("media", specialist([*MEDIA_TOOLS, tools.SKILL_TOOL], MEDIA))
+    g.add_node("analyst", specialist([*ANALYST_TOOLS, tools.SKILL_TOOL], ANALYST))
     g.add_node("validator", validate)
     g.add_edge(START, "router")
     g.add_edge("router", "orchestrator")
@@ -149,7 +161,12 @@ def main():
         hard, conf = out["route"]["hard"]["noul"], out["route"]["kind"]["confidence"]
         print(f"[tier={out['tier']} kind={out['kind']} hard={hard:.2f} conf={conf:.2f} "
               f"verdict={out['verdict'].get('verdict')} retries={out['retries']}]")
-        print(out["messages"][-1].content)
+        answer = out["messages"][-1].content
+        if EMOJI.search(answer):  # второй барьер: правило промпта не удержало модель
+            answer = EMOJI.sub("", answer).strip()
+            telemetry.send_scores(h.last_trace_id if h else None, {"emoji_filter": 1.0})
+            print("[emoji filter] сработал на финальном ответе")
+        print(answer)
     telemetry.shutdown()
 
 
