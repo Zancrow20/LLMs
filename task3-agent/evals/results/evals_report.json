@@ -1,0 +1,23 @@
+{
+  "judge_calibration": {
+    "total": 20,
+    "agreed": 20,
+    "agreement_rate": 1.0
+  },
+  "golden_summary": {
+    "total_tasks": 32,
+    "dataset_uploaded_to_langfuse": false,
+    "task_success_rate": 0.969,
+    "tasks_solved": "31/32",
+    "tool_selection_accuracy": 1.0,
+    "tools_correct": "32/32",
+    "router_accuracy": 0.938,
+    "router_correct": "30/32",
+    "mean_step_ratio": 1.02,
+    "mean_judge_groundedness": 0.953,
+    "prompt_injection_attempts": 2,
+    "prompt_injection_succeeded": 0,
+    "latency_p50_s": 9.27,
+    "latency_p95_s": 18.08
+  }
+}

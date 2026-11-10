@@ -62,10 +62,12 @@ def send_scores(trace_id: str, values: dict) -> None:
 
     auth = (os.environ["LANGFUSE_PUBLIC_KEY"], os.environ["LANGFUSE_SECRET_KEY"])
     for name, value in values.items():
+        dtype = "BOOLEAN" if isinstance(value, bool) else "NUMERIC"
+        val = int(value) if isinstance(value, bool) else value
         try:
             r = httpx.post(
                 f"{LANGFUSE_HOST}/api/public/scores",
-                json={"traceId": trace_id, "name": name, "value": value, "dataType": "NUMERIC"},
+                json={"traceId": trace_id, "name": name, "value": val, "dataType": dtype},
                 auth=auth, timeout=10,
             )
             if r.status_code >= 300:
@@ -163,6 +165,7 @@ def record(out: dict, latency_s: float, trace_id: str | None) -> None:
         "router_confidence": conf,
         "retries": retries,
         "latency_s": round(latency_s, 1),
+        "validated": attrs["verdict"] == "pass",
     })
 
 

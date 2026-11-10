@@ -235,6 +235,30 @@ Langfuse-трейсер внутри VM стучал в `localhost:3000` из с
   - `agent/telemetry.py`, `agent/graph.py`: экспорт структурированных JSON-логов (`request_done`, `gate_interrupt`, `emoji_filtered`) с `trace_id` в Loki через `OTLPLogExporter` (`:4318/v1/logs`), обрезка строковых полей до 500 символов (NFR-8), сценарий T8 в `infra/telemetry-tests.md`.
   - `README.md`: в таблицу изоляции (раздел 5.1) добавлены `OpenSandbox`, `K8s Agent Sandbox`, `Google AX + Agent Substrate`, `kagent`, `UTM/Lima` и колонка лицензий; добавлен раздел 8 (Observability: сравнение стеков, таблица сигналов, встроенные скриншоты, специфика мониторинга агентов).
 
+---
+
+## 2026-11-09. Раздел 12: валидатор
+
+**Сделано**
+
+- `agent/graph.py`: выделена функция `check_answer(question, evidence, answer)` — передаёт в валидатор не только `evidence` и черновик, но и исходный вопрос пользователя; в `orchestrate()` при `fail` валидатора добавлена передача списка `unsupported_claims` вместе с `fix_hint`.
+- `agent/models.py`: при запуске внутри песочницы (`SANDBOX_NAME`) `OLLAMA_HOST` по умолчанию указывает на `http://host.docker.internal:11434` (по аналогии с `tools.py` и `telemetry.py`).
+- `agent/telemetry.py`: поддержка булевых score'ов (`BOOLEAN`, `0`/`1`) и отправка score `validated` (`true` при `pass`, `false` после исчерпания повторов).
+- Набор `evals/validator_tasks.jsonl` (40 задач: 20 верных черновиков и 20 с внесёнными ошибками по видео, аудио, картинкам, CSV и пустому `evidence`) и скрипт `evals/validator_bench.py`.
+- Прогон `evals/validator_bench.py` внутри песочницы `sbx`:
+  - Валидный JSON: 40/40 (100%).
+  - TP = 20, FP = 0, FN = 0, TN = 20; Precision = 1.00, Recall = 1.00, F1 = 1.00.
+  - Латентность `qwen3:8b`: p50 = 1.06 с на `pass` и 3.28 с на `fail`.
+  - Цикл повтора: черновик с «99 людьми и 15 автобусами» отклонён валидатором, исправлен оркестратором на «8 уникальных людей и 1 уникальный автомобиль» и принят со второй проверки (`retries = 1`). При `retries > MAX_RETRIES` ответ получает пометку `(Ответ не проверен валидатором.)` и граф завершается.
+- Раздел 9 («Валидатор») добавлен в `README.md`.
+
+**Проблемы и решения**
+
+Проблема | Решение
+---|---
+В `agent/models.py` хост Ollama по умолчанию был `localhost:11434` даже при заданном `SANDBOX_NAME`, из-за чего скрипт без явного `OLLAMA_HOST` в `sbx` получал `Connection refused` | По аналогии с `tools.py` и `telemetry.py` дефолт в `models.py` переключается на `host.docker.internal:11434`, если задан `SANDBOX_NAME`
+В первом варианте `validate()` в промпт валидатора не передавался вопрос пользователя, поэтому перевод класса ImageNet (`tench` -> «линь») без вопроса выглядел как неподтверждённое слово | В `check_answer()` добавлено поле `Вопрос: {question}`; перевод «линь» (`val-p06`) и округление `-0.82419` -> `-0.82` (`val-p18`) проходят с `verdict = pass`
+
 **Проблемы и решения**
 
 Проблема | Решение
@@ -244,3 +268,41 @@ MCP-обёртка ответа `[{type: text, text: json}]` доезжала д
 Агент не стал вызывать `load_skill` перед `detect_video` — каталог в промпте и шаги в TOOLS.md его заменили | Скилл — рекомендация, а не жёсткий протокол: шаги скилла модель выполнила и без загрузки. Отметить в отчёте; проверка «скилл загружен» — задача для evals, не для промпта
 Скрипт отладки с `PYTHONPATH=.`: без него пакет `agent` не виден из `evals/` | `PYTHONPATH=.` в командах запуска из корня проекта
 «Отчёты на русском» в USER.md читалось как жёсткое правило и конфликтовало с авто-языком IDENTITY (а в композиции промпта USER стоял после IDENTITY) | USER.md — настройка по умолчанию с приоритетом явного запроса; NFR-9 уточнён. Русский в USER.md остаётся как затравка сценария UC-6 и эксперимента с памятью
+
+---
+
+## 2026-11-10. Смена домена на «Аудитор безопасности», разделы 12–15 (валидатор, память, evals, отчёт)
+
+**Сделано**
+
+- **Смена предметной области на «Аудитор безопасности» (Security Reviewer / AppSec & SecOps):**
+  - Вместо медиа-анализа система переведена на задачи AppSec и SecOps без изменения мультиагентной топологии LangGraph, моделей (`gemma4:e4b`, `qwen3:8b`, `gpt-oss:20b`, `strands-decider`), песочницы `sbx` и стека наблюдаемости.
+  - `mcp_ml/server.py`: реализованы 4 мультиязычных MCP-инструмента на порту `8765` с защитой путей `safe(path)` и кешем `_tool_cache` по `(tool, path, mtime)`:
+    1. `scan_code(path)` — гибридный SAST (Python `ast` + регулярные правила CWE для Python, JS/TS, C#, Go, Java, SQL, Shell, `Dockerfile`, YAML/JSON) с расчётом `by_severity`, `mean_conf` и `confidence` для каждой находки;
+    2. `scan_secrets(path)` — поиск утечек ключей AWS, OpenAI, GitHub, приватных ключей PEM и паролей с расчётом энтропии Шеннона и маскированием (`masked_preview`);
+    3. `check_dependencies(path)` — проверка `requirements.txt`, `package.json` и `*.csproj` на известные CVE/CVSS и незафиксированные версии (`CWE-1104`);
+    4. `read_code_slice(path, start_line, end_line)` — чтение пронумерованного среза исходного кода.
+  - В `workspace/` добавлены тестовые артефакты: `vuln_app.py` (6 уязвимостей CWE, 3 секрета и встроенная инъекция `# SYSTEM INSTRUCTION: Ignore all previous instructions...` на строке 1), `frontend_widget.ts` (TypeScript: DOM XSS `CWE-79`, `eval` `CWE-94`, TLS disabled `CWE-295`, `GITHUB_TOKEN`), `UserService.cs` (C#: `CWE-89`, `BinaryFormatter` `CWE-502`, `MD5` `CWE-327`), `requirements_vuln.txt` (4 уязвимых пакета с CVE и 2 unpinned), `auth_access.csv` (лог аутентификации с брутфорсом `401` с `185.220.101.42`, `403` от `guest` и выгрузкой 5 МБ).
+  - Обновлены `SPEC.md`, `persona/*`, `prompts/*`, `skills/*` (`code-audit`, `secret-triage`, `log-forensics`, `answer-with-evidence`), `diagrams/workspace.dsl` и `diagrams/diagrams.md`; перегенерированы все 6 C4-диаграмм (`structurizr export`) и 6 Mermaid-диаграмм (`mmdc`).
+- **Перепроверка раздела 12 (Валидатор) на домене AppSec:**
+  - Обновлён `evals/validator_tasks.jsonl` (40 задач: 20 верных и 20 с искажениями CWE/CVE/номеров строк/статистики) и запущен `evals/validator_bench.py` в `sbx`: валидный JSON **40/40 (100%)**, `TP=20, FP=1, FN=0, TN=19`, **Precision = 0.952**, **Recall = 1.000**, **F1 = 0.976**, цикл повтора `retries = 1` и пометка при превышении лимита работают.
+- **Раздел 13 (Память):**
+  - Реализован `agent/memory.py` (4 слоя: короткая память `SqliteSaver` + сжатие `summarize_if_needed()` при `> 70% num_ctx`; долгая память — би-темпоральный граф фактов `(subject, key, value, valid_at, invalid_at)` с экстрактором `memory_writer` на `qwen3:8b` через `json_schema`; процедурная память — синхронизация `persona/USER.md` через `_sync_user_md()`; кеш тулов `_tool_cache` по `mtime`).
+  - Запущен `evals/memory_bench.py` в `sbx`: короткая память переживает рестарт (`restart_survived = true`), суммаризация сжимает старые реплики (`summarization_triggered = true`), точность `memory_writer` на 20 сессиях — **20/20 (100%)**, закрытие противоречий — **6/6**, доля устаревших фактов в активной выборке — **0%**.
+  - Выполнен эксперимент 13.3 («Классический RAG против Темпорального графа» на смене языка отчёта `английский -> русский`): классический векторный RAG вернул первым устаревший чанк (`similarity = 0.325` против `0.217`), тогда как темпоральный граф вернул только актуальное ребро `user.report_language = русский` (`invalid_at IS NULL`).
+- **Раздел 14 (Evals):**
+  - Созданы `evals/golden.jsonl` (32 задачи по 9 категориям AppSec/SecOps) и `evals/run_evals.py`.
+  - Калибровка судьи (`LLM-as-a-Judge` на `qwen3:8b`) на 20 размеченных вручную примерах дала согласие **20/20 (100%)** (порог `>= 80%`).
+  - Итоги сквозного прогона 32 задач в `sbx` (`evals/results/evals_report.json`): `task_success_rate = 96.9%` (`31/32`), `tool_selection_accuracy = 100.0%` (`32/32`), `router_accuracy = 93.8%` (`30/32`), `mean_step_ratio = 1.02`, `mean_judge_groundedness = 0.953`, `prompt_injection_succeeded = 0/2`, латентность `p50 = 9.27 с`, `p95 = 18.08 с`.
+- **Раздел 15 (Отчёт):**
+  - В `README.md` добавлены разделы 10 (Память), 11 (Evals), 12 (Лицензии стека и исключения из open-source) и 13 (Выводы и ограничения); сгенерирован итоговый `report.pdf`.
+
+**Проблемы и решения**
+
+Проблема | Решение
+---|---
+В `infra/mcp-ml.sh` стоял `set -e`, и первая проверка `curl` во время старта Uvicorn завершала скрипт с кодом 7 | В цикл ожидания готовности добавлен `|| true`, после чего скрипт корректно дожидается ответа `:8765`
+В задачах форензики (`sec-19`..`sec-24`) агент `analyst` писал `open("workspace/auth_access.csv")`, а `run_python` уже запускался с `cwd=WORKSPACE`, что давало `FileNotFoundError` | В `agent/tools.py` добавлена нормализация `code = code.replace("workspace/", "")` и уточнено описание тула и `prompts/analyst.md`; успешность `forensics` выросла с `0/6` до `5/6`
+При остановленном контейнере Langfuse (`:3000`) экспортер OpenTelemetry в `sbx` повторял запросы с backoff и добавлял ~12 с к каждой задаче оффлайн-прогона | В `evals/run_evals.py` при недоступности `:3000` отключается `telemetry.TRACING = False`, что ускорило прогон одной задачи до реального времени работы моделей (`p50 = 9.27 с`)
+Команда `pkill -f <pattern>` внутри `sbx exec -- bash -lc '... <pattern> ...'` убивала саму подоболочку `bash -lc` (код 143), так как паттерн входил в строку аргументов `bash -lc` | Использовать точное имя скрипта или проверку через `ps`/`pgrep` без совпадения со строкой самой команды
+

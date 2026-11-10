@@ -1,0 +1,367 @@
+{
+  "short_memory": {
+    "restart_survived": true,
+    "restored_messages": 2,
+    "summarization_triggered": true,
+    "removed_old_messages": 3,
+    "summary_preview": "Сводка предыдущих сообщений сессии:\nАудит файла `vuln_app.py` выявил 6 уязвимостей, включая SQLi на строке 14, классифицированные как CWE-89 и CWE-78. Дополнительно был проверен `requirements_vuln.txt`, где обнаружено 4 CVE, в частности CVE"
+  },
+  "sessions_20": {
+    "total_sessions": 20,
+    "matched_sessions": 20,
+    "accuracy": 1.0,
+    "invalidations_expected": 6,
+    "invalidations_triggered": 6,
+    "stale_facts_in_active_search": 0,
+    "total_edges_stored": 10,
+    "details": [
+      {
+        "id": "s01",
+        "ok": true,
+        "latency_s": 4.94,
+        "added": 1,
+        "invalidated": 0,
+        "facts": [
+          {
+            "subject": "user",
+            "key": "report_language",
+            "value": "английский"
+          }
+        ]
+      },
+      {
+        "id": "s02",
+        "ok": true,
+        "latency_s": 1.34,
+        "added": 1,
+        "invalidated": 1,
+        "facts": [
+          {
+            "subject": "user",
+            "key": "report_language",
+            "value": "русский"
+          }
+        ]
+      },
+      {
+        "id": "s03",
+        "ok": true,
+        "latency_s": 1.93,
+        "added": 1,
+        "invalidated": 0,
+        "facts": [
+          {
+            "subject": "user",
+            "key": "report_style",
+            "value": "подробно"
+          }
+        ]
+      },
+      {
+        "id": "s04",
+        "ok": true,
+        "latency_s": 1.92,
+        "added": 1,
+        "invalidated": 1,
+        "facts": [
+          {
+            "subject": "user",
+            "key": "report_style",
+            "value": "кратко"
+          }
+        ]
+      },
+      {
+        "id": "s05",
+        "ok": true,
+        "latency_s": 2.1,
+        "added": 1,
+        "invalidated": 0,
+        "facts": [
+          {
+            "subject": "user",
+            "key": "security_format",
+            "value": "всегда указывать CWE"
+          }
+        ]
+      },
+      {
+        "id": "s06",
+        "ok": true,
+        "latency_s": 4.11,
+        "added": 2,
+        "invalidated": 0,
+        "facts": [
+          {
+            "subject": "vuln_app.py",
+            "key": "total_findings",
+            "value": "6"
+          },
+          {
+            "subject": "vuln_app.py",
+            "key": "main_vulns",
+            "value": "2 CRITICAL, 1 HIGH, 2 MEDIUM, 1 LOW"
+          }
+        ]
+      },
+      {
+        "id": "s07",
+        "ok": true,
+        "latency_s": 2.02,
+        "added": 1,
+        "invalidated": 1,
+        "facts": [
+          {
+            "subject": "vuln_app.py",
+            "key": "total_findings",
+            "value": "2"
+          }
+        ]
+      },
+      {
+        "id": "s08",
+        "ok": true,
+        "latency_s": 3.75,
+        "added": 2,
+        "invalidated": 1,
+        "facts": [
+          {
+            "subject": "vuln_app.py",
+            "key": "total_secrets",
+            "value": "3"
+          },
+          {
+            "subject": "vuln_app.py",
+            "key": "main_vulns",
+            "value": "CWE-798"
+          }
+        ]
+      },
+      {
+        "id": "s09",
+        "ok": true,
+        "latency_s": 2.04,
+        "added": 1,
+        "invalidated": 1,
+        "facts": [
+          {
+            "subject": "vuln_app.py",
+            "key": "total_secrets",
+            "value": "0"
+          }
+        ]
+      },
+      {
+        "id": "s10",
+        "ok": true,
+        "latency_s": 3.97,
+        "added": 2,
+        "invalidated": 0,
+        "facts": [
+          {
+            "subject": "frontend_widget.ts",
+            "key": "total_findings",
+            "value": "3"
+          },
+          {
+            "subject": "frontend_widget.ts",
+            "key": "main_vulns",
+            "value": "CWE-79, CWE-94, CWE-295"
+          }
+        ]
+      },
+      {
+        "id": "s11",
+        "ok": true,
+        "latency_s": 2.66,
+        "added": 1,
+        "invalidated": 0,
+        "facts": [
+          {
+            "subject": "UserService.cs",
+            "key": "main_vulns",
+            "value": "CWE-89, CWE-502, CWE-327"
+          }
+        ]
+      },
+      {
+        "id": "s12",
+        "ok": true,
+        "latency_s": 2.04,
+        "added": 1,
+        "invalidated": 0,
+        "facts": [
+          {
+            "subject": "requirements_vuln.txt",
+            "key": "vulnerable_count",
+            "value": "4"
+          }
+        ]
+      },
+      {
+        "id": "s13",
+        "ok": true,
+        "latency_s": 2.05,
+        "added": 1,
+        "invalidated": 1,
+        "facts": [
+          {
+            "subject": "requirements_vuln.txt",
+            "key": "vulnerable_count",
+            "value": "2"
+          }
+        ]
+      },
+      {
+        "id": "s14",
+        "ok": true,
+        "latency_s": 3.03,
+        "added": 1,
+        "invalidated": 0,
+        "facts": [
+          {
+            "subject": "auth_access.csv",
+            "key": "log_anomalies",
+            "value": "6 ошибок 401 с IP 185.220.101.42"
+          }
+        ]
+      },
+      {
+        "id": "s15",
+        "ok": true,
+        "latency_s": 3.39,
+        "added": 2,
+        "invalidated": 0,
+        "facts": [
+          {
+            "subject": "payment.go",
+            "key": "total_findings",
+            "value": "1"
+          },
+          {
+            "subject": "payment.go",
+            "key": "main_vulns",
+            "value": "CWE-89"
+          }
+        ]
+      },
+      {
+        "id": "s16",
+        "ok": true,
+        "latency_s": 3.49,
+        "added": 2,
+        "invalidated": 0,
+        "facts": [
+          {
+            "subject": "Dockerfile",
+            "key": "total_findings",
+            "value": "2"
+          },
+          {
+            "subject": "Dockerfile",
+            "key": "main_vulns",
+            "value": "CWE-250"
+          }
+        ]
+      },
+      {
+        "id": "s17",
+        "ok": true,
+        "latency_s": 1.89,
+        "added": 1,
+        "invalidated": 0,
+        "facts": [
+          {
+            "subject": "package.json",
+            "key": "vulnerable_count",
+            "value": "3"
+          }
+        ]
+      },
+      {
+        "id": "s18",
+        "ok": true,
+        "latency_s": 1.91,
+        "added": 1,
+        "invalidated": 1,
+        "facts": [
+          {
+            "subject": "package.json",
+            "key": "vulnerable_count",
+            "value": "0"
+          }
+        ]
+      },
+      {
+        "id": "s19",
+        "ok": true,
+        "latency_s": 0.43,
+        "added": 0,
+        "invalidated": 0,
+        "facts": []
+      },
+      {
+        "id": "s20",
+        "ok": true,
+        "latency_s": 0.43,
+        "added": 0,
+        "invalidated": 0,
+        "facts": []
+      }
+    ]
+  },
+  "experiment_13_3": {
+    "question": "На каком языке писать отчёт?",
+    "rag_retrieved_chunks": [
+      {
+        "id": 1,
+        "thread_id": "s1",
+        "body": "Пользователь: Отчёты пиши на английском.\nАссистент: Принято: отчёты буду писать на английском языке.",
+        "created_at": "2026-11-10T10:00:00Z",
+        "similarity": 0.325
+      },
+      {
+        "id": 2,
+        "thread_id": "s2",
+        "body": "Пользователь: Теперь пиши на русском.\nАссистент: Хорошо, теперь отчёты пишу на русском языке.",
+        "created_at": "2026-11-10T11:00:00Z",
+        "similarity": 0.217
+      }
+    ],
+    "rag_has_stale_fact": true,
+    "rag_answer": "Отчёт нужно писать на русском языке.",
+    "temporal_active_facts": [
+      {
+        "id": 2,
+        "subject": "user",
+        "key": "report_language",
+        "value": "русский",
+        "valid_at": "2026-11-10T11:00:00Z",
+        "invalid_at": null,
+        "thread_id": "s2"
+      }
+    ],
+    "temporal_history_all_edges": [
+      {
+        "id": 2,
+        "subject": "user",
+        "key": "report_language",
+        "value": "русский",
+        "valid_at": "2026-11-10T11:00:00Z",
+        "invalid_at": null,
+        "thread_id": "s2"
+      },
+      {
+        "id": 1,
+        "subject": "user",
+        "key": "report_language",
+        "value": "английский",
+        "valid_at": "2026-11-10T10:00:00Z",
+        "invalid_at": "2026-11-10T11:00:00Z",
+        "thread_id": "s1"
+      }
+    ],
+    "temporal_has_stale_fact": false,
+    "temporal_answer": "Отчёт следует писать на русском языке."
+  }
+}

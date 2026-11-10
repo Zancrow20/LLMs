@@ -4,7 +4,8 @@ import os
 import httpx
 from langchain_ollama import ChatOllama
 
-OLLAMA = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+_default_host = "http://host.docker.internal:11434" if os.environ.get("SANDBOX_NAME") else "http://localhost:11434"
+OLLAMA = os.environ.get("OLLAMA_HOST", _default_host)
 DECIDER = "strands-decider"
 MAIN, HEAVY, VALIDATOR = "gemma4:e4b", "gpt-oss:20b", "qwen3:8b"
 HEAVY_THRESHOLD = 0.85
@@ -16,9 +17,9 @@ _ollama = {"base_url": OLLAMA, "client_kwargs": {"trust_env": False}, "keep_aliv
 ROUTE = {
     "hard": {"type": "noul", "instructions": "Задача требует нескольких шагов, рассуждения или кода"},
     "kind": {"type": "choice", "instructions": "Какой агент нужен",
-             "criteria": {"media": "анализ видео, аудио или картинки",
-                          "analyst": "расчёты по таблице или код",
-                          "chat": "вопрос без файла"}},
+             "criteria": {"scanner": "поиск уязвимостей, секретов или проверка зависимостей в файле кода или конфига",
+                          "analyst": "анализ логов, CSV-таблиц или расчёты на Python",
+                          "chat": "вопрос без проверки конкретного файла"}},
 }
 
 

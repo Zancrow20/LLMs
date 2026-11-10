@@ -1,4 +1,4 @@
-"""Тулы агентов. MCP-тулы для media подключаются в разделе 10."""
+"""Тулы агентов. MCP-тулы для scanner подключаются с хоста по streamable-http."""
 import json
 import re
 import subprocess
@@ -8,7 +8,7 @@ from pathlib import Path
 from langchain_core.tools import tool
 from langgraph.types import interrupt
 
-from . import models
+from . import memory, models
 
 WORKSPACE = Path(__file__).resolve().parents[1] / "workspace"
 SKILLS_DIR = Path(__file__).resolve().parents[1] / "skills"
@@ -32,11 +32,13 @@ def gate(code: str) -> float:
 
 @tool
 def run_python(code: str) -> str:
-    """Выполнить Python-код. Файлы пользователя лежат в workspace/."""
+    """Выполнить Python-код. Рабочая папка — уже внутри workspace/, открывай файлы без префикса workspace/ (например, open('auth_access.csv'))."""
     risk = gate(code)
     # при resume граф перезапускает тул с начала, interrupt возвращает ответ пользователя
     if risk > GATE_THRESHOLD and not interrupt({"code": code, "risk": round(risk, 2)}):
         return "Пользователь запретил выполнять этот код."
+    # если модель всё же написала open('workspace/file.csv'), нормализуем путь
+    code = code.replace("workspace/", "")
     # сам агент работает в microVM sbx, код исполняется в той же изолированной VM
     try:
         r = subprocess.run([sys.executable, "-c", code], cwd=WORKSPACE,
@@ -116,8 +118,8 @@ def _to_sync(t):
                           args_schema=t.args_schema, func=call)
 
 
-def _load_media_tools() -> list:
-    """MCP-тулы задания 1 с хоста. В песочнице — через host.docker.internal."""
+def _load_scanner_tools() -> list:
+    """MCP-тулы AppSec-сканера с хоста. В песочнице — через host.docker.internal."""
     import asyncio
     import os
 
@@ -127,16 +129,18 @@ def _load_media_tools() -> list:
     from langchain_mcp_adapters.client import MultiServerMCPClient
 
     client = MultiServerMCPClient(
-        {"ml": {"url": f"http://{host}:8765/mcp", "transport": "streamable_http"}})
+        {"sec": {"url": f"http://{host}:8765/mcp", "transport": "streamable_http"}})
     return [_to_sync(t) for t in asyncio.run(client.get_tools())]
 
 
 try:
-    MEDIA_TOOLS = _load_media_tools()
-    print(f"[tools] MCP: {len(MEDIA_TOOLS)} тулов")
-except Exception as e:  # сервер не поднят — media-агент остаётся без ML-тулов
+    SCANNER_TOOLS = _load_scanner_tools()
+    print(f"[tools] MCP: {len(SCANNER_TOOLS)} тулов")
+except Exception as e:  # сервер не поднят — scanner-агент остаётся без MCP-тулов
     print(f"[tools] MCP недоступен: {e}")
-    MEDIA_TOOLS = []
+    SCANNER_TOOLS = []
 
+MEDIA_TOOLS = SCANNER_TOOLS
 ANALYST_TOOLS = [run_python]
 SKILL_TOOL = load_skill
+MEMORY_TOOL = memory.memory_search

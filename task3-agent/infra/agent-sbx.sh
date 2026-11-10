@@ -12,6 +12,7 @@ docker info >/dev/null 2>&1 || { open -a Docker; sleep 20; }
 # allowlist: политика deny-all должна быть инициализирована, правила идемпотентны
 sbx policy ls >/dev/null 2>&1 || sbx policy init deny-all
 sbx policy allow network "host.docker.internal:11434,127.0.0.1:11434,localhost:11434" >/dev/null 2>&1 || true
+sbx policy allow network "host.docker.internal:8765,127.0.0.1:8765,localhost:8765" >/dev/null 2>&1 || true
 sbx policy allow network "host.docker.internal:3000,127.0.0.1:3000,localhost:3000" >/dev/null 2>&1 || true
 sbx policy allow network "host.docker.internal:4318,127.0.0.1:4318,localhost:4318" >/dev/null 2>&1 || true
 sbx policy allow network "pypi.org,files.pythonhosted.org" >/dev/null 2>&1 || true

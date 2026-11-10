@@ -1,39 +1,39 @@
-workspace "Медиа-ассистент" "C4-модель мультиагентной системы, задание 3" {
+workspace "Аудитор безопасности" "C4-модель мультиагентной системы AppSec/SecOps-анализа, задание 3" {
 
     !identifiers hierarchical
 
     model {
-        user = person "Пользователь" "Даёт файл и вопрос, получает отчёт"
-        dev = person "Разработчик" "Смотрит трейсы, дашборды, алерты"
+        user = person "Разработчик / ИБ-аналитик" "Даёт файл кода, зависимостей или лог и вопрос, получает верифицированный отчёт"
+        dev = person "Инженер платформы" "Смотрит трейсы, дашборды, алерты"
 
         group "MacBook, Apple M5" {
-            assistant = softwareSystem "Медиа-ассистент" "Отвечает на вопросы о видео, аудио, картинках и CSV" {
+            assistant = softwareSystem "Аудитор безопасности" "Локальный аудит уязвимостей кода (SAST), секретов, зависимостей (SCA) и форензика логов" {
                 group "microVM sbx" {
-                    cli = container "CLI" "Слой 1: проверка файла, запуск графа" "Python"
+                    cli = container "CLI" "Слой 1: проверка файла, запуск графа, /good и /bad" "Python"
                     agent = container "Граф агентов" "Слои 2–7: роутинг, планирование, действие, верификация, память, телеметрия" "Python, LangGraph" {
                         group "Слои 1–2. Вход и роутинг" {
                             input = component "input" "Проверяет тип и размер файла" "Узел графа"
                             router = component "router" "Получает kind и hard от decision-модели, выбирает tier" "Узел графа"
                         }
                         group "Слой 3. Планирование" {
-                            orch = component "orchestrator" "Строит план, делегирует, пишет ответ" "Узел графа"
+                            orch = component "orchestrator" "Строит план, делегирует, пишет и исправляет ответ" "Узел графа"
                         }
                         group "Слой 4. Действие" {
-                            media = component "media" "Анализирует файлы через MCP-тулы" "create_agent"
-                            analyst = component "analyst" "Пишет и запускает код" "create_agent"
+                            scanner = component "scanner" "Ищет уязвимости, секреты и CVE через MCP-тулы" "create_agent"
+                            analyst = component "analyst" "Пишет и запускает Python-код для форензики логов и CSV" "create_agent"
                             tools = component "tools.py" "run_python, load_skill, memory_search" "LangChain tools"
                         }
                         group "Слой 5. Верификация" {
-                            gate = component "gate" "Проверяет код перед run_python, вызывает interrupt" "decision-модель"
-                            validator = component "validator" "Сверяет ответ с evidence" "Узел графа"
+                            gate = component "gate" "Проверяет код перед run_python (regex + decision-модель), вызывает interrupt" "Гибридный гейт"
+                            validator = component "validator" "Сверяет ответ с evidence по JSON-схеме" "Узел графа"
                         }
                         group "Слой 6. Память" {
                             memw = component "memory_writer" "Извлекает факты после ответа" "Фоновая задача"
                             memory = component "memory.py" "Короткая и долгая память" "SqliteSaver, Graphiti"
-                            proc = component "skills, persona, prompts" "Процедурная память" "Markdown"
+                            proc = component "skills, persona, prompts" "Процедурная память (code-audit, secret-triage, log-forensics)" "Markdown"
                         }
                         group "Слой 7. Наблюдаемость" {
-                            tel = component "telemetry.py" "Трейсы, метрики, логи" "Langfuse SDK, OpenTelemetry"
+                            tel = component "telemetry.py" "Трейсы, метрики, JSON-логи" "Langfuse SDK, OpenTelemetry"
                         }
                         models = component "models.py" "Клиенты LLM и decide()" "httpx, langchain-ollama"
                     }
@@ -43,8 +43,8 @@ workspace "Медиа-ассистент" "C4-модель мультиаген�
                 }
                 group "Хост macOS" {
                     ollama = container "Ollama" "gemma4:e4b, qwen3:8b, strands-decider; gpt-oss:20b по запросу" "llama.cpp и MLX, Metal"
-                    mcp = container "MCP-сервер" "ML-тулы задания 1: transcribe, sentiment, classify_image, detect_video" "FastMCP, PyTorch MPS"
-                    ws = container "workspace/" "Файлы пользователя, смонтированы в microVM" "Каталог" "Folder"
+                    mcp = container "MCP-сервер (sec-tools)" "AppSec-тулы: scan_code, scan_secrets, check_dependencies, read_code_slice" "MCPServer, AST + Regex"
+                    ws = container "workspace/" "Проверяемые файлы кода и логи, смонтированы в microVM" "Каталог" "Folder"
                 }
             }
 
@@ -57,11 +57,11 @@ workspace "Медиа-ассистент" "C4-модель мультиаген�
         cloud = softwareSystem "Облачный LLM API" "Open-weights модель, опционально" "External"
         telegram = softwareSystem "Telegram" "Канал алертов" "External"
 
-        user -> assistant.cli "Вопрос и файл" "CLI"
+        user -> assistant.cli "Вопрос и файл кода / лога" "CLI"
         dev -> obs.langfuse "Смотрит трейсы и evals" "HTTP"
-        dev -> obs.lgtm "Смотрит дашборды" "HTTP"
+        dev -> obs.lgtm "Смотрит дашборды и логи" "HTTP"
 
-        assistant.cli -> assistant.ws "Кладёт файл"
+        assistant.cli -> assistant.ws "Кладёт проверяемый файл"
         assistant.cli -> assistant.agent.input "Запускает граф" "invoke"
         assistant.agent.input -> assistant.agent.router "Передаёт state"
         assistant.agent.router -> assistant.agent.models "decide()"
@@ -69,12 +69,12 @@ workspace "Медиа-ассистент" "C4-модель мультиаген�
         assistant.agent.orch -> assistant.agent.models "chat"
         assistant.agent.orch -> assistant.agent.proc "load_skill"
         assistant.agent.orch -> assistant.agent.memory "memory_search"
-        assistant.agent.orch -> assistant.agent.media "Задача"
-        assistant.agent.orch -> assistant.agent.analyst "Задача"
+        assistant.agent.orch -> assistant.agent.scanner "Задача аудита кода"
+        assistant.agent.orch -> assistant.agent.analyst "Задача форензики логов"
         assistant.agent.orch -> assistant.agent.validator "Черновик и evidence"
         assistant.agent.orch -> assistant.agent.memw "После ответа, фоном"
-        assistant.agent.media -> assistant.mcp "Вызов тула" "MCP :8765"
-        assistant.agent.media -> assistant.agent.orch "Результат тула"
+        assistant.agent.scanner -> assistant.mcp "Вызов тула" "MCP :8765"
+        assistant.agent.scanner -> assistant.agent.orch "Находки CWE/CVE"
         assistant.agent.analyst -> assistant.agent.gate "Код"
         assistant.agent.analyst -> assistant.agent.orch "Результат кода"
         assistant.agent.gate -> assistant.agent.models "systemone"
@@ -92,7 +92,7 @@ workspace "Медиа-ассистент" "C4-модель мультиаген�
         assistant.agent.tel -> obs.langfuse "Трейсы" "HTTP :3000"
         assistant.agent.tel -> obs.lgtm "Метрики, логи" "OTLP :4318"
         assistant.runpy -> assistant.ws "Читает и пишет"
-        assistant.mcp -> assistant.ws "Читает"
+        assistant.mcp -> assistant.ws "Читает через safe()"
         obs.lgtm -> telegram "Алерты" "Bot API"
 
         deploymentEnvironment "Локально" {
@@ -144,16 +144,16 @@ workspace "Медиа-ассистент" "C4-модель мультиаген�
             autoLayout tb
         }
 
-        dynamic assistant.agent "video" "Сценарий «Сколько людей прошло в кадре?» с vtest.avi" {
-            user -> assistant.cli "Вопрос и vtest.avi"
+        dynamic assistant.agent "audit" "Сценарий «Проверь уязвимости в vuln_app.py»" {
+            user -> assistant.cli "Вопрос и vuln_app.py"
             assistant.cli -> assistant.agent.input "Запуск графа"
             assistant.agent.input -> assistant.agent.router "Файл проверен"
             assistant.agent.router -> assistant.agent.models "kind, hard"
             assistant.agent.models -> assistant.ollama "systemone: strands-decider"
             assistant.agent.router -> assistant.agent.orch "tier = main (gemma4:e4b)"
-            assistant.agent.orch -> assistant.agent.media "Задача, путь к файлу"
-            assistant.agent.media -> assistant.mcp "detect_video(track=True)"
-            assistant.agent.media -> assistant.agent.orch "unique, mean_conf"
+            assistant.agent.orch -> assistant.agent.scanner "Задача, путь к файлу"
+            assistant.agent.scanner -> assistant.mcp "scan_code('vuln_app.py')"
+            assistant.agent.scanner -> assistant.agent.orch "findings, mean_conf"
             assistant.agent.orch -> assistant.agent.validator "Черновик и evidence"
             assistant.agent.validator -> assistant.agent.models "Проверка"
             assistant.agent.models -> assistant.ollama "chat: qwen3:8b, JSON-схема"
