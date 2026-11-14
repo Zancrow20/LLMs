@@ -8,8 +8,8 @@ from pathlib import Path
 
 # Локальные сервисы ходят мимо HTTP_PROXY (JOURNAL.md, 2026-10-24).
 # Делается до импорта SDK: httpx читает окружение при первом запросе.
-os.environ.setdefault("NO_PROXY", "localhost,127.0.0.1")
-os.environ.setdefault("no_proxy", "localhost,127.0.0.1")
+os.environ.setdefault("NO_PROXY", "localhost,127.0.0.1,host.docker.internal")
+os.environ.setdefault("no_proxy", "localhost,127.0.0.1,host.docker.internal")
 
 
 def _load_env() -> None:
@@ -61,19 +61,20 @@ def send_scores(trace_id: str, values: dict) -> None:
     import httpx
 
     auth = (os.environ["LANGFUSE_PUBLIC_KEY"], os.environ["LANGFUSE_SECRET_KEY"])
-    for name, value in values.items():
-        dtype = "BOOLEAN" if isinstance(value, bool) else "NUMERIC"
-        val = int(value) if isinstance(value, bool) else value
-        try:
-            r = httpx.post(
-                f"{LANGFUSE_HOST}/api/public/scores",
-                json={"traceId": trace_id, "name": name, "value": val, "dataType": dtype},
-                auth=auth, timeout=10,
-            )
-            if r.status_code >= 300:
-                print(f"[telemetry] score {name}: HTTP {r.status_code}")
-        except Exception as e:  # score не должен ронять ответ пользователю
-            print(f"[telemetry] score {name} не ушел: {e}")
+    with httpx.Client(trust_env=False, timeout=10) as client:
+        for name, value in values.items():
+            dtype = "BOOLEAN" if isinstance(value, bool) else "NUMERIC"
+            val = int(value) if isinstance(value, bool) else value
+            try:
+                r = client.post(
+                    f"{LANGFUSE_HOST}/api/public/scores",
+                    json={"traceId": trace_id, "name": name, "value": val, "dataType": dtype},
+                    auth=auth,
+                )
+                if r.status_code >= 300:
+                    print(f"[telemetry] score {name}: HTTP {r.status_code}")
+            except Exception as e:  # score не должен ронять ответ пользователю
+                print(f"[telemetry] score {name} не ушел: {e}")
 
 
 # --- Метрики и логи: OpenTelemetry -> OTLP -> Prometheus и Loki в grafana/otel-lgtm ---

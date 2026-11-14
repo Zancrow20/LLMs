@@ -20,7 +20,9 @@ GATE_THRESHOLD = 0.5
 # детерминированные операции, модель — смысловые варианты.
 RISKY_CODE = re.compile(
     r"os\.(remove|unlink|rmdir)|shutil\.rmtree|os\.system|subprocess"
-    r"|requests\.|urllib|urlopen|socket\.", re.I)
+    r"|\.unlink\s*\(|\.rmdir\s*\(|requests\.|httpx\.|http\.client|urllib|urlopen|socket\.",
+    re.I,
+)
 
 
 def gate(code: str) -> float:
@@ -38,7 +40,7 @@ def run_python(code: str) -> str:
     if risk > GATE_THRESHOLD and not interrupt({"code": code, "risk": round(risk, 2)}):
         return "Пользователь запретил выполнять этот код."
     # если модель всё же написала open('workspace/file.csv'), нормализуем путь
-    code = code.replace("workspace/", "")
+    code = code.replace("workspace/", "").replace("workspace\\", "")
     # сам агент работает в microVM sbx, код исполняется в той же изолированной VM
     try:
         r = subprocess.run([sys.executable, "-c", code], cwd=WORKSPACE,
@@ -140,7 +142,6 @@ except Exception as e:  # сервер не поднят — scanner-агент 
     print(f"[tools] MCP недоступен: {e}")
     SCANNER_TOOLS = []
 
-MEDIA_TOOLS = SCANNER_TOOLS
 ANALYST_TOOLS = [run_python]
 SKILL_TOOL = load_skill
 MEMORY_TOOL = memory.memory_search

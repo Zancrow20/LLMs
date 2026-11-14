@@ -41,11 +41,9 @@ def _prompt(name: str, persona_keys: list[str]) -> str:
 
 
 _PERSONA = {p.stem for p in (ROOT / "persona").glob("*.md")}
-ORCHESTRATOR = _prompt("orchestrator", ["SOUL", "IDENTITY", "AGENTS", "USER"])
 SCANNER = _prompt("scanner", ["SOUL", "IDENTITY", "TOOLS"]) + "\n\n# Каталог скиллов\n" + tools.skill_catalog()
 ANALYST = _prompt("analyst", ["SOUL", "IDENTITY", "TOOLS"]) + "\n\n# Каталог скиллов\n" + tools.skill_catalog()
 VALIDATOR = _prompt("validator", ["SOUL", "IDENTITY"])
-MEMORY_WRITER = _read(ROOT / "prompts" / "memory_writer.md")  # подключается в разделе 13
 FACTS = {"facts": {"type": "noul", "instructions": "Ответ содержит факты или числа, которые нужно проверить"}}
 # gemma4:e4b на MLX иногда отвечает пустой строкой после результата тула; явная просьба это лечит (JOURNAL.md)
 NUDGE = "Сформулируй ответ на мой вопрос по результату тула."
@@ -72,6 +70,30 @@ def route(state: State) -> dict:
     return {"tier": tier, "kind": a["kind"]["choice"], "route": a, "evidence": [], "retries": 0, "verdict": {}}
 
 
+_MEM_QUERY_HINTS = (
+    "помни", "вспомн", "памят", "прошл", "раньше", "ранее", "сесси",
+    "предпочт", "умолчан", "язык", "стил", "формат", "отчёт", "отчет",
+    "сравни", "наход", "известн",
+    "remember", "memory", "prefer", "default", "previous", "earlier",
+    "past", "session", "history", "language", "style", "format",
+    "report", "compare", "findings",
+)
+
+
+def _should_attach_memory_evidence(question: str, mem_facts: list[dict]) -> bool:
+    """Передавать факты долгой памяти в evidence при запросе про настройки или прошлые аудиты."""
+    q_low = question.lower()
+    if any(hint in q_low for hint in _MEM_QUERY_HINTS):
+        return True
+    q_tokens = {t for t in re.findall(r"[a-zA-Zа-яА-ЯёЁ0-9_.-]+", q_low) if len(t) >= 3}
+    for f in mem_facts:
+        if f.get("subject", "").lower() != "user":
+            blob = f"{f.get('subject', '')} {f.get('key', '')} {f.get('value', '')}".lower()
+            if any(t in blob for t in q_tokens):
+                return True
+    return False
+
+
 def orchestrate(state: State) -> dict:
     llm = models.llm(state["tier"])
     orch_prompt = _prompt("orchestrator", ["SOUL", "IDENTITY", "AGENTS", "USER"])
@@ -92,7 +114,7 @@ def orchestrate(state: State) -> dict:
         if mem_facts:
             lines = [f"- {f['subject']}.{f['key']} = {f['value']} (valid_at={f['valid_at']})" for f in mem_facts]
             mem_block = "\n\n# Действующие факты из долгой памяти\n" + "\n".join(lines)
-            if any(w in q.lower() for w in ("помни", "прошл", "язык", "отчёт", "отчет", "раньше", "сесси", "сравни", "стиль", "формат")):
+            if _should_attach_memory_evidence(q, mem_facts):
                 ev.append("memory_search: " + "; ".join(lines))
         reply = llm.invoke([SystemMessage(orch_prompt + mem_block), *state["messages"]])
         return {"messages": [*summary_ops, reply], "evidence": ev}
@@ -164,8 +186,35 @@ def build() -> StateGraph:
     return g
 
 
-ALLOWED_EXT = {".py", ".js", ".ts", ".jsx", ".tsx", ".cs", ".go", ".java", ".sql", ".sh", ".yml", ".yaml", ".json", ".txt", ".csv", ".log"}
+ALLOWED_EXT = {".py", ".js", ".ts", ".jsx", ".tsx", ".cs", ".csproj", ".go", ".java", ".sql", ".sh", ".yml", ".yaml", ".json", ".txt", ".csv", ".log"}
 MAX_FILE_MB = 50
+_KNOWN_CHECK_EXT = (
+    r"py|js|ts|jsx|tsx|cs|csproj|go|java|sql|sh|yml|yaml|json|txt|csv|log|mod|"
+    r"rs|rb|php|c|cpp|h|hpp|kt|swift|xml|toml|md|avi|mp4|mp3|wav|png|jpg|jpeg|"
+    r"pdf|docx|xlsx|zip|exe|bin|dll|sqlite|db|env"
+)
+_FILE_RE = re.compile(
+    rf"(?:^|[\s\"'`(])((?:\.\.?[/\\])+[^\s\"'`),;:!?]+|"
+    rf"(?:workspace[/\\])?[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(?:{_KNOWN_CHECK_EXT})(?=$|[\s\"'`),;:!?]|\.(?!\w))|"
+    rf"(?:workspace[/\\])?(?:Dockerfile(?:\.[A-Za-z0-9_.-]+)?|go\.mod)(?=$|[\s\"'`),;:!?]|\.(?!\w)))",
+    re.I,
+)
+
+
+def _extract_candidate_files(question: str) -> list[str]:
+    """Извлечь имена или пути файлов из CLI-вопроса для предпроверки FR-2."""
+    found = []
+    for m in _FILE_RE.finditer(question):
+        tok = m.group(1).rstrip(".,;:!?'\"`()")
+        if "*" in tok or "?" in tok:
+            continue
+        if tok.startswith("./") or tok.startswith(".\\"):
+            tok = tok[2:]
+        if tok.startswith(("workspace/", "workspace\\")):
+            tok = tok[len("workspace/"):]
+        if tok and tok not in found:
+            found.append(tok)
+    return found
 
 
 def check_input_file(filename: str) -> str | None:
@@ -175,7 +224,7 @@ def check_input_file(filename: str) -> str | None:
         return f"Отказ FR-2: путь {filename} выходит за пределы workspace/."
     if not p.exists():
         return f"Отказ FR-2: файл {filename} не найден в workspace/."
-    if p.suffix.lower() not in ALLOWED_EXT and not p.name.lower().startswith("dockerfile"):
+    if p.suffix.lower() not in ALLOWED_EXT and not p.name.lower().startswith("dockerfile") and p.name.lower() != "go.mod":
         return f"Отказ FR-2: неподдерживаемый тип файла {p.suffix} (разрешены исходники, конфиги, зависимости и .csv/.log)."
     size_mb = p.stat().st_size / (1024 * 1024)
     if size_mb > MAX_FILE_MB:
@@ -198,7 +247,7 @@ def main():
         print(f"Оценка {args[0]} ({val}) записана для трейса {tid or 'local'}.")
         return
 
-    # FR-2: опциональный флаг --file <name> для предпроверки файла до старта графа
+    # FR-2: предпроверка файла по --file <name> или по упоминанию пути/файла в вопросе
     if len(args) >= 2 and args[0] == "--file":
         err = check_input_file(args[1])
         if err:
@@ -207,6 +256,11 @@ def main():
         args = args[2:]
 
     question = " ".join(args) or "Что ты умеешь?"
+    for fname in _extract_candidate_files(question):
+        err = check_input_file(fname)
+        if err:
+            print(err)
+            return
     thread = os.environ.get("THREAD", "cli")
     config = {"configurable": {"thread_id": thread}, "recursion_limit": 25}
     h = telemetry.handler()

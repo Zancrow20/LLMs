@@ -133,6 +133,36 @@ SAST_RULES = [
         "Контейнер с избыточными привилегиями (USER root / privileged: true / --no-sandbox)",
         re.compile(r"(^\s*USER\s+root\b|privileged\s*:\s*true|--no-sandbox)", re.I),
     ),
+    (
+        "SQL-DYNAMIC-EXEC",
+        "CWE-89",
+        "HIGH",
+        0.90,
+        {"sql"},
+        "Динамическое формирование SQL через EXECUTE / конкатенацию",
+        re.compile(
+            r"(EXECUTE\s+IMMEDIATE|EXEC\s*\([^)]*(\+|\|\|)|sp_executesql\s+@\w+.*(\+|concat)|\bPREPARE\s+\w+\s+FROM\b|['\"]?(SELECT|INSERT|UPDATE|DELETE)\b.*(\|\|\s*@?[a-zA-Z_]|['\"]\s*\+\s*@?[a-zA-Z_]))",
+            re.I,
+        ),
+    ),
+    (
+        "SQL-OVERPRIVILEGED-GRANT",
+        "CWE-250",
+        "MEDIUM",
+        0.85,
+        {"sql"},
+        "Выдача избыточных привилегий (GRANT ALL)",
+        re.compile(r"\bGRANT\s+ALL\b", re.I),
+    ),
+    (
+        "SQL-WEAK-HASH",
+        "CWE-327",
+        "MEDIUM",
+        0.85,
+        {"sql"},
+        "Слабый криптографический хеш в SQL (MD5 или SHA1)",
+        re.compile(r"\b(MD5|SHA1)\s*\(", re.I),
+    ),
 ]
 
 SECRET_PATTERNS = [
@@ -162,6 +192,7 @@ KNOWN_VULN_PACKAGES = {
     "jsonwebtoken": {"8.5.1": ("CVE-2022-23529", "HIGH", 7.6, "Удалённое выполнение кода при некорректном secretOrPrivateKey")},
     "axios": {"0.21.1": ("CVE-2021-3749", "HIGH", 7.5, "ReDoS в функции trim")},
     "newtonsoft.json": {"11.0.1": ("CVE-2024-21907", "HIGH", 7.5, "StackOverflowException при глубокой вложенности JSON")},
+    "github.com/dgrijalva/jwt-go": {"3.2.0": ("CVE-2020-26160", "HIGH", 7.5, "Обход проверки audience в JWT")},
 }
 
 
@@ -317,18 +348,39 @@ def check_dependencies(path: str) -> dict:
         data = json.loads(text)
         for section in ("dependencies", "devDependencies"):
             for pkg, ver in data.get(section, {}).items():
-                packages.append((pkg, str(ver).lstrip("^~"), 1))
+                packages.append((pkg, str(ver).strip(), 1))
     elif name_lower.endswith(".csproj"):
         ecosystem = "nuget"
         for idx, line in enumerate(text.splitlines(), start=1):
             m = re.search(r'PackageReference\s+Include="([^"]+)"\s+Version="([^"]+)"', line)
             if m:
                 packages.append((m.group(1), m.group(2), idx))
+    elif name_lower == "go.mod":
+        ecosystem = "go"
+        in_require = False
+        for idx, line in enumerate(text.splitlines(), start=1):
+            s = line.split("//", 1)[0].strip()
+            if not s:
+                continue
+            if re.match(r"^require\s*\($", s):
+                in_require = True
+                continue
+            if in_require:
+                if s == ")":
+                    in_require = False
+                    continue
+                parts = s.split()
+                if len(parts) >= 2:
+                    packages.append((parts[0], parts[1], idx))
+            elif s.startswith("require "):
+                parts = s[len("require "):].strip().split()
+                if len(parts) >= 2:
+                    packages.append((parts[0], parts[1], idx))
     else:
         ecosystem = "pypi"
         for idx, line in enumerate(text.splitlines(), start=1):
-            s = line.strip()
-            if not s or s.startswith("#"):
+            s = line.split("#", 1)[0].strip()
+            if not s:
                 continue
             if "==" in s:
                 pkg, ver = s.split("==", 1)
@@ -342,11 +394,13 @@ def check_dependencies(path: str) -> dict:
     unpinned = []
     for pkg, ver, line_no in packages:
         key = pkg.lower()
-        if ver in {"*", "latest", ""} or ver.startswith((">=", "~=", ">")):
+        if ver in {"*", "latest", ""} or ver.startswith(("^", "~", ">=", "~=", ">", "<")) or ver.endswith((".x", ".*")) or "||" in ver:
             unpinned.append({"line": line_no, "package": pkg, "spec": ver, "cwe": "CWE-1104"})
-        clean_ver = ver.lstrip("=<>~^")
-        if key in KNOWN_VULN_PACKAGES and clean_ver in KNOWN_VULN_PACKAGES[key]:
-            cve, sev, cvss, desc = KNOWN_VULN_PACKAGES[key][clean_ver]
+        clean_ver = re.sub(r"^[=<>~^!\s]+", "", ver)
+        vuln_map = KNOWN_VULN_PACKAGES.get(key, {})
+        hit_ver = clean_ver if clean_ver in vuln_map else clean_ver.lstrip("v")
+        if hit_ver in vuln_map:
+            cve, sev, cvss, desc = vuln_map[hit_ver]
             vulnerabilities.append({
                 "line": line_no,
                 "package": pkg,
