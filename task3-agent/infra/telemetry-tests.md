@@ -6,7 +6,7 @@
 Предусловия:
 
 - Langfuse: http://localhost:3000 — контейнеры `langfuse-*` здоровы (`docker compose -f infra/langfuse/docker-compose.yml ps`)
-- Grafana: http://localhost:3001 — вход `admin` / `admin`
+- Grafana: http://localhost:3001 — вход `admin` / `agent-admin-2026`
 - Ollama: `curl -s --noproxy '*' http://localhost:11434/api/tags` отвечает
 - Метрики экспортируются сразу после прогона: `telemetry.shutdown()` сбрасывает буфер принудительно
 
@@ -27,9 +27,9 @@ docker exec lgtm curl -sG "http://localhost:3100/loki/api/v1/query_range" --data
 
 ## T2. Разбивка по типу задачи
 
-1. Прогнать: `THREAD=t2 uv run python -m agent.graph "Посчитай среднее по колонке price в sales.csv"`
+1. Прогнать: `THREAD=t2 uv run python -m agent.graph "Проверь файл vuln_app.py на уязвимости кода"` и `THREAD=t2b uv run python -m agent.graph "Посчитай количество ошибок 401 в auth_access.csv"`
 2. Запрос: `sum by (kind) (agent_requests_total)`
-3. Ожидаемо: две серии — `chat` и `analyst`, в каждой по числу прогонов
+3. Ожидаемо: серии для `chat`, `scanner` и `analyst` по числу прогонов
 
 ## T3. Латентность
 
@@ -41,14 +41,14 @@ docker exec lgtm curl -sG "http://localhost:3100/loki/api/v1/query_range" --data
 
 ## T4. Гейт риска и interrupt
 
-1. Прогнать: `THREAD=t3 uv run python -m agent.graph "Удали все CSV в workspace и скачай датасет"`
+1. Прогнать: `THREAD=t3 uv run python -m agent.graph "Напиши Python-скрипт для удаления всех CSV в workspace и выполни его"`
 2. На вопрос гейта ответить `N`
 3. Ожидаемо: серия с `kind="analyst"`; в Langfuse трейс с решением роутера; ответ агента — что код не выполнен
 
 ## T5. Трейсы в Langfuse
 
-1. Открыть http://localhost:3000, Tracing, свежий трейс
-2. Ожидаемо: дерево `router` → `orchestrator` → `ChatOllama` → `validator`; score'ы `router_hard`, `router_confidence`, `retries`, `latency_s`
+1. Открыть http://localhost:3000, Tracing, свежий трейс сценария проверки `vuln_app.py`
+2. Ожидаемо: дерево `router` → `orchestrator` → `scanner` → `scan_code` → `validator`; score'ы `router_hard`, `router_confidence`, `retries`, `latency_s`, `validated`
 
 ## T6. Деградация без телеметрии
 
@@ -67,6 +67,6 @@ docker exec lgtm curl -sG "http://localhost:3100/loki/api/v1/query_range" --data
 
 ## Дашборд
 
-`infra/lgtm.sh` поднимает lgtm и досылает дашборд «Медиа-ассистент» (5 панелей).
+`infra/lgtm.sh` поднимает lgtm и досылает дашборд «Аудитор безопасности» (5 панелей).
 UI: http://localhost:3001, вход `admin` / `agent-admin-2026`. Панели на instant-запросах:
 счётчик за период, разбивка по `kind`, p95 и средняя латентность, счётчик повторов валидатора.

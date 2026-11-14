@@ -28,8 +28,8 @@ workspace "Аудитор безопасности" "C4-модель мульт�
                             validator = component "validator" "Сверяет ответ с evidence по JSON-схеме" "Узел графа"
                         }
                         group "Слой 6. Память" {
-                            memw = component "memory_writer" "Извлекает факты после ответа" "Фоновая задача"
-                            memory = component "memory.py" "Короткая и долгая память" "SqliteSaver, Graphiti"
+                            memw = component "memory_writer" "Извлекает факты после ответа (qwen3:8b JSON-схема)" "Вызов в CLI"
+                            memory = component "memory.py" "Короткая память, би-темпоральный граф фактов и USER.md" "SqliteSaver, SQLite"
                             proc = component "skills, persona, prompts" "Процедурная память (code-audit, secret-triage, log-forensics)" "Markdown"
                         }
                         group "Слой 7. Наблюдаемость" {
@@ -38,8 +38,8 @@ workspace "Аудитор безопасности" "C4-модель мульт�
                         models = component "models.py" "Клиенты LLM и decide()" "httpx, langchain-ollama"
                     }
                     runpy = container "run_python" "Слой 4: выполняет код analyst, timeout 30 с" "subprocess"
-                    sqlite = container "SqliteSaver" "Слой 6: короткая память по thread_id" "SQLite" "Database"
-                    neo4j = container "Neo4j Community" "Слой 6: долгая память Graphiti" "Graph DB" "Database"
+                    sqlite = container "SqliteSaver" "Слой 6: короткая память (short.sqlite) по thread_id" "SQLite" "Database"
+                    longdb = container "Темпоральный граф фактов" "Слой 6: долгая память с valid_at / invalid_at (long_memory.sqlite)" "SQLite" "Database"
                 }
                 group "Хост macOS" {
                     ollama = container "Ollama" "gemma4:e4b, qwen3:8b, strands-decider; gpt-oss:20b по запросу" "llama.cpp и MLX, Metal"
@@ -66,16 +66,20 @@ workspace "Аудитор безопасности" "C4-модель мульт�
         assistant.agent.input -> assistant.agent.router "Передаёт state"
         assistant.agent.router -> assistant.agent.models "decide()"
         assistant.agent.router -> assistant.agent.orch "tier, kind"
-        assistant.agent.orch -> assistant.agent.models "chat"
-        assistant.agent.orch -> assistant.agent.proc "load_skill"
-        assistant.agent.orch -> assistant.agent.memory "memory_search"
+        assistant.agent.orch -> assistant.agent.models "chat / retry"
+        assistant.agent.orch -> assistant.agent.proc "Читает persona/USER.md"
+        assistant.agent.orch -> assistant.agent.memory "search_temporal (chat)"
         assistant.agent.orch -> assistant.agent.scanner "Задача аудита кода"
         assistant.agent.orch -> assistant.agent.analyst "Задача форензики логов"
         assistant.agent.orch -> assistant.agent.validator "Черновик и evidence"
-        assistant.agent.orch -> assistant.agent.memw "После ответа, фоном"
+        assistant.cli -> assistant.agent.memw "После ответа (CLI)"
         assistant.agent.scanner -> assistant.mcp "Вызов тула" "MCP :8765"
+        assistant.agent.scanner -> assistant.agent.proc "load_skill"
+        assistant.agent.scanner -> assistant.agent.memory "memory_search"
         assistant.agent.scanner -> assistant.agent.orch "Находки CWE/CVE"
         assistant.agent.analyst -> assistant.agent.gate "Код"
+        assistant.agent.analyst -> assistant.agent.proc "load_skill"
+        assistant.agent.analyst -> assistant.agent.memory "memory_search"
         assistant.agent.analyst -> assistant.agent.orch "Результат кода"
         assistant.agent.gate -> assistant.agent.models "systemone"
         assistant.agent.gate -> assistant.agent.tools "run_python"
@@ -83,10 +87,11 @@ workspace "Аудитор безопасности" "C4-модель мульт�
         assistant.agent.validator -> assistant.agent.models "chat"
         assistant.agent.validator -> assistant.agent.orch "fail, fix_hint"
         assistant.agent.validator -> assistant.cli "Ответ после pass"
-        assistant.agent.memw -> assistant.agent.models "chat"
-        assistant.agent.memw -> assistant.agent.memory "add_episode"
+        assistant.agent.memw -> assistant.agent.models "qwen3:8b json_schema"
+        assistant.agent.memw -> assistant.agent.memory "extract_and_store"
+        assistant.agent.memory -> assistant.agent.proc "Обновляет USER.md"
         assistant.agent.memory -> assistant.sqlite "checkpoint" "SQLite"
-        assistant.agent.memory -> assistant.neo4j "add_episode, search" "Bolt :7687"
+        assistant.agent.memory -> assistant.longdb "add_facts, search_temporal" "SQLite"
         assistant.agent.models -> assistant.ollama "chat, systemone" "HTTP :11434"
         assistant.agent.models -> cloud "Сложные задачи" "HTTPS"
         assistant.agent.tel -> obs.langfuse "Трейсы" "HTTP :3000"
@@ -102,9 +107,7 @@ workspace "Аудитор безопасности" "C4-модель мульт�
                     containerInstance assistant.agent
                     containerInstance assistant.runpy
                     containerInstance assistant.sqlite
-                    deploymentNode "Docker внутри sbx" "" "Docker Engine" {
-                        containerInstance assistant.neo4j
-                    }
+                    containerInstance assistant.longdb
                 }
                 deploymentNode "macOS" "Metal GPU" "macOS 26.2" {
                     containerInstance assistant.ollama
@@ -158,9 +161,9 @@ workspace "Аудитор безопасности" "C4-модель мульт�
             assistant.agent.validator -> assistant.agent.models "Проверка"
             assistant.agent.models -> assistant.ollama "chat: qwen3:8b, JSON-схема"
             assistant.agent.validator -> assistant.cli "Ответ после pass"
-            assistant.agent.orch -> assistant.agent.memw "После ответа"
-            assistant.agent.memw -> assistant.agent.memory "add_episode"
-            assistant.agent.memory -> assistant.neo4j "Факт в граф"
+            assistant.cli -> assistant.agent.memw "После ответа"
+            assistant.agent.memw -> assistant.agent.memory "extract_and_store"
+            assistant.agent.memory -> assistant.longdb "Факт в temporal_edges"
             autoLayout lr
         }
 

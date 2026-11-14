@@ -1,5 +1,5 @@
 {
-  "title": "Медиа-ассистент",
+  "title": "Аудитор безопасности",
   "uid": "agent",
   "schemaVersion": 39,
   "editable": true,
@@ -68,7 +68,7 @@
     {
       "id": 5,
       "type": "stat",
-      "title": "Доля отказов валидатора",
+      "title": "Повторы валидатора",
       "description": "retries суммарно по прогонам; растёт при fail валидатора",
       "gridPos": { "h": 6, "w": 8, "x": 16, "y": 6 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },

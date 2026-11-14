@@ -97,10 +97,10 @@ sequenceDiagram
   V->>L: chat (qwen3:8b), JSON-схема Verdict
   L-->>V: verdict = pass
   V-->>U: верифицированный отчёт
-  opt После ответа, фоном
-    O->>W: история сессии
-    W->>L: извлечь факты (qwen3:8b)
-    W->>W: add_episode в Graphiti
+  opt После ответа (CLI extract_and_store)
+    U->>W: вопрос + ответ
+    W->>L: извлечь факты (qwen3:8b, JSON-схема)
+    W->>W: add_facts в SQLite (temporal_edges)
   end
 ```
 
@@ -136,35 +136,38 @@ sequenceDiagram
 
 ## Sequence 3. Обновление долгой памяти
 
-Новый факт противоречит старому. Graphiti закрывает старый факт, и в ответ попадает только действующий.
+Новый факт противоречит старому. `agent/memory.py` закрывает старое ребро в SQLite (`invalid_at = t2`) и обновляет `persona/USER.md`, поэтому в ответ попадает только действующий факт.
 
 ```mermaid
 sequenceDiagram
   autonumber
   actor U as Пользователь
   participant O as orchestrator
-  participant W as memory_writer
-  participant G as Graphiti
-  participant N as Neo4j
+  participant W as memory_writer (qwen3:8b)
+  participant M as agent/memory.py
+  participant DB as SQLite (long_memory.sqlite)
 
-  Note over U,N: Сессия s1
+  Note over U,DB: Сессия s1
   U->>O: «Отчёты аудита пиши на английском»
-  O->>W: история сессии
-  W->>G: add_episode
-  G->>N: факт «язык = английский», valid_at = t1
+  O-->>U: ответ
+  W->>M: extract_and_store(s1)
+  M->>DB: INSERT (user, report_language, английский, valid_at=t1, NULL)
+  M->>M: _sync_user_md() -> USER.md
 
-  Note over U,N: Сессия s2
+  Note over U,DB: Сессия s2
   U->>O: «Теперь пиши на русском»
-  O->>W: история сессии
-  W->>G: add_episode
-  G->>G: поиск противоречий (LLM)
-  G->>N: факт «язык = русский», valid_at = t2
-  G->>N: старому факту invalid_at = t2
+  O-->>U: ответ
+  W->>M: extract_and_store(s2)
+  M->>DB: UPDATE invalid_at=t2 WHERE (user, report_language) IS NULL
+  M->>DB: INSERT (user, report_language, русский, valid_at=t2, NULL)
+  M->>M: _sync_user_md() -> USER.md
 
-  Note over U,N: Сессия s3
+  Note over U,DB: Сессия s3
   U->>O: «На каком языке писать отчёт?»
-  O->>G: memory_search("язык отчётов")
-  G-->>O: действующий факт: русский
+  O->>M: search_temporal("язык отчётов")
+  M->>DB: SELECT ... WHERE invalid_at IS NULL
+  DB-->>M: действующий факт: русский
+  M-->>O: user.report_language = русский
   O-->>U: «На русском»
 ```
 

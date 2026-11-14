@@ -1,0 +1,8 @@
+pyyaml==5.3.1
+requests==2.19.0
+flask==0.12.2
+cryptography==3.2
+boto3
+uvicorn>=0.20.0
+pydantic==2.9.2
+

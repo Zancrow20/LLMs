@@ -206,5 +206,9 @@ runs/
 *.mp4
 .DS_Store
 
-# задание 3: файлы пользователя и короткая память агента
-task3-agent/workspace/
+# задание 3: runtime-БД и старые медиафайлы (тестовые файлы кода и логов в workspace/ коммитятся)
+task3-agent/workspace/*.sqlite*
+task3-agent/workspace/.last_trace_id
+task3-agent/workspace/*.avi
+task3-agent/workspace/*.wav
+task3-agent/workspace/*.jpg

@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 TOKEN=$(grep '^TELEGRAM_BOT_TOKEN=' .env | cut -d= -f2)
 CHAT_ID=$(grep '^TELEGRAM_CHAT_ID=' .env | cut -d= -f2)
 [ -z "$CHAT_ID" ] || [ "$CHAT_ID" = "pending" ] && { echo "нет TELEGRAM_CHAT_ID в .env"; exit 1; }
-AUTH="admin:agent-admin-2026"
+AUTH="${GRAFANA_USER:-admin}:${GRAFANA_PASSWORD:-agent-admin-2026}"
 BASE="http://localhost:3001"
 
 # папка для правил

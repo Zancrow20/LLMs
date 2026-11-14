@@ -8,10 +8,26 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const taskDir = path.resolve(__dirname, "..");
-const npxPkg = path.join(os.homedir(), ".npm/_npx/668c188756b835f3/package.json");
-const require = createRequire(npxPkg);
-const { marked } = require("marked");
-const puppeteer = require("puppeteer");
+function loadDeps() {
+  try {
+    const req = createRequire(import.meta.url);
+    return { marked: req("marked").marked, puppeteer: req("puppeteer") };
+  } catch {
+    const npxRoot = path.join(os.homedir(), ".npm/_npx");
+    if (fs.existsSync(npxRoot)) {
+      for (const dir of fs.readdirSync(npxRoot)) {
+        const nm = path.join(npxRoot, dir, "node_modules");
+        if (fs.existsSync(path.join(nm, "marked")) && fs.existsSync(path.join(nm, "puppeteer"))) {
+          const req = createRequire(path.join(npxRoot, dir, "package.json"));
+          return { marked: req("marked").marked, puppeteer: req("puppeteer") };
+        }
+      }
+    }
+    throw new Error("Не найдены пакеты marked и puppeteer (установите через npm install или npx -p marked -p puppeteer)");
+  }
+}
+
+const { marked, puppeteer } = loadDeps();
 
 const mdPath = path.join(taskDir, "README.md");
 const htmlPath = path.join(os.tmpdir(), "task3-report-render.html");
