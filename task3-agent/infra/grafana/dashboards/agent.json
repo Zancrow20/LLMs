@@ -43,7 +43,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (le) (agent_latency_seconds_bucket))",
+          "expr": "histogram_quantile(0.95, sum by (le) (last_over_time(agent_latency_seconds_bucket[$__range])))",
           "refId": "A",
           "instant": true
         }
@@ -58,7 +58,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum(agent_latency_seconds_sum) / sum(agent_latency_seconds_count)",
+          "expr": "sum(last_over_time(agent_latency_seconds_sum[$__range])) / sum(last_over_time(agent_latency_seconds_count[$__range]))",
           "refId": "A",
           "instant": true
         }
@@ -73,7 +73,7 @@
       "gridPos": { "h": 6, "w": 8, "x": 16, "y": 6 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "expr": "sum(agent_validator_retries_total)", "refId": "A", "instant": true }
+        { "expr": "sum(last_over_time(agent_validator_retries_total[$__range])) or vector(0)", "refId": "A", "instant": true }
       ],
       "fieldConfig": { "defaults": { "decimals": 0 }, "overrides": [] }
     }

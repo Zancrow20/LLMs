@@ -13,7 +13,7 @@
 Быстрая проверка без UI (внутри контейнера):
 
 ```bash
-docker exec lgtm curl -s "http://localhost:9090/api/v1/query?query=sum_over_time(agent_requests_total[1h])"
+docker exec lgtm curl -sg "http://localhost:9090/api/v1/query?query=sum_over_time(agent_requests_total[1h])"
 docker exec lgtm curl -sG "http://localhost:3100/loki/api/v1/query_range" --data-urlencode 'query={service_name="agent"}'
 ```
 

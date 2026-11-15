@@ -1,6 +1,147 @@
 {
   "total": 20,
   "agreed": 20,
-  "agreement_rate": 1.0
+  "agreement_rate": 1.0,
+  "details": [
+    {
+      "idx": 1,
+      "human": true,
+      "pred": true,
+      "score": 1.0,
+      "ok": true
+    },
+    {
+      "idx": 2,
+      "human": true,
+      "pred": true,
+      "score": 1.0,
+      "ok": true
+    },
+    {
+      "idx": 3,
+      "human": true,
+      "pred": true,
+      "score": 1.0,
+      "ok": true
+    },
+    {
+      "idx": 4,
+      "human": true,
+      "pred": true,
+      "score": 1.0,
+      "ok": true
+    },
+    {
+      "idx": 5,
+      "human": true,
+      "pred": true,
+      "score": 1.0,
+      "ok": true
+    },
+    {
+      "idx": 6,
+      "human": true,
+      "pred": true,
+      "score": 1.0,
+      "ok": true
+    },
+    {
+      "idx": 7,
+      "human": true,
+      "pred": true,
+      "score": 1.0,
+      "ok": true
+    },
+    {
+      "idx": 8,
+      "human": true,
+      "pred": true,
+      "score": 1.0,
+      "ok": true
+    },
+    {
+      "idx": 9,
+      "human": true,
+      "pred": true,
+      "score": 1.0,
+      "ok": true
+    },
+    {
+      "idx": 10,
+      "human": true,
+      "pred": true,
+      "score": 1.0,
+      "ok": true
+    },
+    {
+      "idx": 11,
+      "human": false,
+      "pred": false,
+      "score": 0.0,
+      "ok": true
+    },
+    {
+      "idx": 12,
+      "human": false,
+      "pred": false,
+      "score": 0.0,
+      "ok": true
+    },
+    {
+      "idx": 13,
+      "human": false,
+      "pred": false,
+      "score": 0.0,
+      "ok": true
+    },
+    {
+      "idx": 14,
+      "human": false,
+      "pred": false,
+      "score": 0.0,
+      "ok": true
+    },
+    {
+      "idx": 15,
+      "human": false,
+      "pred": false,
+      "score": 0.0,
+      "ok": true
+    },
+    {
+      "idx": 16,
+      "human": false,
+      "pred": false,
+      "score": 0.0,
+      "ok": true
+    },
+    {
+      "idx": 17,
+      "human": false,
+      "pred": false,
+      "score": 0.0,
+      "ok": true
+    },
+    {
+      "idx": 18,
+      "human": false,
+      "pred": false,
+      "score": 0.0,
+      "ok": true
+    },
+    {
+      "idx": 19,
+      "human": false,
+      "pred": false,
+      "score": 0.0,
+      "ok": true
+    },
+    {
+      "idx": 20,
+      "human": false,
+      "pred": false,
+      "score": 0.0,
+      "ok": true
+    }
+  ]
 }
-

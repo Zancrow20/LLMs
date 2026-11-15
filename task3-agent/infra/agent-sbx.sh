@@ -27,6 +27,6 @@ sbx exec "$SBX_NAME" -- sh -c \
 
 echo
 echo "Запуск агента в песочнице:"
-echo "  sbx exec $SBX_NAME -- sh -c 'cd /Users/zancrow/GitHub/LLMs/task3-agent && \"
-  echo "  UV_PROJECT_ENVIRONMENT=/home/agent/.venv-sbx OLLAMA_HOST=http://host.docker.internal:11434 \\"
+echo "  sbx exec $SBX_NAME -- sh -c 'cd /Users/zancrow/GitHub/LLMs/task3-agent && \\"
+echo "  UV_PROJECT_ENVIRONMENT=/home/agent/.venv-sbx OLLAMA_HOST=http://host.docker.internal:11434 \\"
 echo "  uv run python -m agent.graph \"вопрос\"'"
