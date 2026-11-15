@@ -306,3 +306,29 @@ MCP-обёртка ответа `[{type: text, text: json}]` доезжала д
 При остановленном контейнере Langfuse (`:3000`) экспортер OpenTelemetry в `sbx` повторял запросы с backoff и добавлял ~12 с к каждой задаче оффлайн-прогона | В `evals/run_evals.py` при недоступности `:3000` отключается `telemetry.TRACING = False`, что ускорило прогон одной задачи до реального времени работы моделей (`p50 = 9.27 с`)
 Команда `pkill -f <pattern>` внутри `sbx exec -- bash -lc '... <pattern> ...'` убивала саму подоболочку `bash -lc` (код 143), так как паттерн входил в строку аргументов `bash -lc` | Использовать точное имя скрипта или проверку через `ps`/`pgrep` без совпадения со строкой самой команды
 
+---
+
+## 2026-11-15. Полный аудит AppSec-реализации, живой прогон с телеметрией и синхронизация отчёта
+
+**Сделано**
+
+- Исправлены расхождения между кодом, диаграммами, инфраструктурой и отчётом по всей папке `task3-agent/`:
+  - Код (`mcp_ml/server.py`, `agent/graph.py`, `agent/telemetry.py`, `agent/tools.py`, `evals/run_evals.py`): добавлены недостающие расширения и правила, согласован поиск по темпоральной памяти в режиме `chat`, добавлен флаг `--fresh` в `run_evals.py`.
+  - Диаграммы (`diagrams/workspace.dsl`, `diagrams/diagrams.md`): убраны устаревшие упоминания медиа-домена и Neo4j/Graphiti, перегенерированы C4 PNG (`structurizr export`) и Mermaid PNG (`mmdc`).
+  - Инфраструктура: исправлена экранированная кавычка в `infra/agent-sbx.sh`, добавлен `-g` в PromQL-запросы `curl` в `infra/telemetry-tests.md`, обновлены запросы `last_over_time(...[$__range])` и `or vector(0)` в `infra/grafana/dashboards/agent.json`.
+- Живой прогон в песочнице `sbx` при запущенных `mcp_ml/server.py`, `grafana/otel-lgtm` и `Langfuse`:
+  - Пройдены `evals/mcp_probe.py` и `evals/safe_test.py`.
+  - Прогон `evals/run_evals.py --fresh`: калибровка судьи `20/20 (100.0%)`, `tasks_solved = 31/32 (0.969)`, `tools_correct = 32/32 (1.0)`, `router_correct = 30/32 (0.938)`, `mean_step_ratio = 1.02`, `mean_judge_groundedness = 0.984`, `prompt_injection_succeeded = 0/2`, `latency_p50_s = 17.52`, `latency_p95_s = 27.84`; без повторов с первой попытки — `31/32 (96.9%)` (1 retry на `sec-31`).
+  - Подтверждена синхронизация датасета `security-reviewer-golden` (`32` записи) в Langfuse UI и REST API; обновлены скриншоты `screens/langfuse-trace-obs3.png` (трейс `9cb939ca11f30d7388f346c5757bae49`, `vuln_app.py`) и `screens/grafana-dashboard.png`.
+  - Повторно применён `infra/telegram-alert.sh` на `lgtm`, удалены дубликаты от прежнего тома Grafana, подтверждена доставка в Telegram (`355ms`, без ошибок), тестовое правило удалено, оставлено рабочее `p95 латентность выше 60 с`.
+  - Замерена память вне Ollama: `mcp_ml/server.py` ~`8 МБ` RSS, демон `sbx` ~`107 МБ` RSS, `otel-lgtm` ~`773 МиБ`, 7 контейнеров Langfuse ~`4.14 ГиБ` (всего в Docker ~`4.9 ГиБ`).
+- Синхронизированы docstring в `agent/memory.py`, `SPEC.md` (`UC-6`, `FR-1`), `README.md` (таблица агентов, `ollama pull` с `qwen3:8b`, фактический RAM вне Ollama, SQLite вместо Graphiti/Neo4j, `gemma4:e4b = 43/43`, свежие метрики `evals_report.json` и уточнённая причина ошибки на `sec-24`), пересобран `report.pdf`.
+
+**Проблемы и решения**
+
+Проблема | Решение
+---|---
+В `sec-24` файл `auth_access.csv` оканчивается завершающей пустой строкой (строка 14 после 1 заголовка и 12 записей), из-за чего `readlines() - 1` вернул `13`, а судья `LLM-as-a-Judge` поставил `1.0` по выводу скрипта | Детерминированная проверка `expect.contains: ["12"]` поймала ошибку; разбор случая в `README.md` уточнён по фактическому трейсу `golden_runs.jsonl`
+Пересоздание контейнера `lgtm` сохраняло том Grafana, и повторный запуск `telegram-alert.sh` создал вторую папку и пару правил | Удалили старые дубликаты через Provisioning API; после подтверждения доставки в Telegram удалили тестовое правило, оставив `p95 латентность выше 60 с`
+
+
