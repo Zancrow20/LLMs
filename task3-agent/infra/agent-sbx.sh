@@ -22,11 +22,12 @@ sbx ls 2>/dev/null | grep -q "^$SBX_NAME" || \
   sbx create shell "$(pwd)" --name "$SBX_NAME"
 
 # venv внутри VM: .venv в смонтированной папке принадлежит хосту (macOS)
+WORKDIR=$(pwd)
 sbx exec "$SBX_NAME" -- sh -c \
-  'cd /Users/zancrow/GitHub/LLMs/task3-agent && UV_PROJECT_ENVIRONMENT=/home/agent/.venv-sbx uv sync 2>&1 | tail -1'
+  "cd '$WORKDIR' && UV_PROJECT_ENVIRONMENT=/home/agent/.venv-sbx uv sync 2>&1 | tail -1"
 
 echo
 echo "Запуск агента в песочнице:"
-echo "  sbx exec $SBX_NAME -- sh -c 'cd /Users/zancrow/GitHub/LLMs/task3-agent && \\"
+echo "  sbx exec $SBX_NAME -- sh -c 'cd \"$WORKDIR\" && \\"
 echo "  UV_PROJECT_ENVIRONMENT=/home/agent/.venv-sbx OLLAMA_HOST=http://host.docker.internal:11434 \\"
 echo "  uv run python -m agent.graph \"вопрос\"'"

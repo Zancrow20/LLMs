@@ -73,10 +73,11 @@ const html = `<!doctype html>
       border: 1px solid #d0d7de;
       border-radius: 6px;
       padding: 8px 10px;
-      overflow-x: auto;
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
       page-break-inside: avoid;
     }
-    pre code { background: transparent; padding: 0; font-size: 8.5pt; }
+    pre code { background: transparent; padding: 0; font-size: 8.5pt; white-space: pre-wrap; overflow-wrap: break-word; }
     table {
       width: 100%;
       border-collapse: collapse;

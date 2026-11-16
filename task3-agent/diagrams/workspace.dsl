@@ -69,23 +69,20 @@ workspace "Аудитор безопасности" "C4-модель мульт�
         assistant.agent.orch -> assistant.agent.models "chat / retry"
         assistant.agent.orch -> assistant.agent.proc "Читает persona/USER.md"
         assistant.agent.orch -> assistant.agent.memory "search_temporal (chat)"
-        assistant.agent.orch -> assistant.agent.scanner "Задача аудита кода"
-        assistant.agent.orch -> assistant.agent.analyst "Задача форензики логов"
-        assistant.agent.orch -> assistant.agent.validator "Черновик и evidence"
+        assistant.agent.orch -> assistant.agent.scanner "Делегирует SAST/SCA и получает находки"
+        assistant.agent.orch -> assistant.agent.analyst "Делегирует форензику и получает расчёт"
+        assistant.agent.orch -> assistant.agent.validator "Передаёт черновик (при fail — повтор)"
         assistant.cli -> assistant.agent.memw "После ответа (CLI)"
         assistant.agent.scanner -> assistant.mcp "Вызов тула" "MCP :8765"
-        assistant.agent.scanner -> assistant.agent.proc "load_skill"
-        assistant.agent.scanner -> assistant.agent.memory "memory_search"
-        assistant.agent.scanner -> assistant.agent.orch "Находки CWE/CVE"
+        assistant.agent.scanner -> assistant.agent.tools "load_skill, memory_search"
         assistant.agent.analyst -> assistant.agent.gate "Код"
-        assistant.agent.analyst -> assistant.agent.proc "load_skill"
-        assistant.agent.analyst -> assistant.agent.memory "memory_search"
-        assistant.agent.analyst -> assistant.agent.orch "Результат кода"
+        assistant.agent.analyst -> assistant.agent.tools "load_skill, memory_search"
         assistant.agent.gate -> assistant.agent.models "systemone"
         assistant.agent.gate -> assistant.agent.tools "run_python"
+        assistant.agent.tools -> assistant.agent.proc "Чтение SKILL.md"
+        assistant.agent.tools -> assistant.agent.memory "memory_search"
         assistant.agent.tools -> assistant.runpy "Код" "subprocess"
         assistant.agent.validator -> assistant.agent.models "chat"
-        assistant.agent.validator -> assistant.agent.orch "fail, fix_hint"
         assistant.agent.validator -> assistant.cli "Ответ после pass"
         assistant.agent.memw -> assistant.agent.models "qwen3:8b json_schema"
         assistant.agent.memw -> assistant.agent.memory "extract_and_store"
@@ -139,17 +136,17 @@ workspace "Аудитор безопасности" "C4-модель мульт�
 
         container assistant "containers" "Процессы и хранилища. Группы показывают границу microVM" {
             include *
-            autoLayout tb
+            autoLayout tb 420 320
         }
 
         component assistant.agent "components" "Компоненты графа агентов по 7 слоям" {
             include *
-            autoLayout tb
+            autoLayout tb 420 320
         }
 
         dynamic assistant.agent "audit" "Сценарий «Проверь уязвимости в vuln_app.py»" {
             user -> assistant.cli "Вопрос и vuln_app.py"
-            assistant.cli -> assistant.agent.input "Запуск графа"
+            assistant.cli -> assistant.agent.input "Запускает граф"
             assistant.agent.input -> assistant.agent.router "Файл проверен"
             assistant.agent.router -> assistant.agent.models "kind, hard"
             assistant.agent.models -> assistant.ollama "systemone: strands-decider"
@@ -164,7 +161,7 @@ workspace "Аудитор безопасности" "C4-модель мульт�
             assistant.cli -> assistant.agent.memw "После ответа"
             assistant.agent.memw -> assistant.agent.memory "extract_and_store"
             assistant.agent.memory -> assistant.longdb "Факт в temporal_edges"
-            autoLayout lr
+            autoLayout lr 420 320
         }
 
         deployment * "Локально" "deployment" "Где работает каждый контейнер" {
@@ -173,6 +170,12 @@ workspace "Аудитор безопасности" "C4-модель мульт�
         }
 
         styles {
+            relationship "Relationship" {
+                dashed false
+                thickness 2
+                color #334155
+                fontSize 22
+            }
             element "Element" {
                 color #ffffff
             }

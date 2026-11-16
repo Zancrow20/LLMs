@@ -2,7 +2,7 @@
 
 Аудитор безопасности (Security Reviewer) — локальная мультиагентная система для AppSec- и SecOps-анализа на локальных LLM. Она ищет уязвимости CWE в исходном коде (Python, JS/TS, C#, Go, Java, SQL, Dockerfile), проверяет утечки секретов, аудирует зависимости на CVE и разбирает журналы событий (`.csv`, логи). Код агентов и проверяемые скрипты выполняются в изолированной microVM `sbx`.
 
-Репозиторий: https://github.com/Zancrow20/LLMs
+Репозиторий: https://github.com/Zancrow20/LLMs/tree/agent-26-oct
 
 ## Как запустить
 
@@ -11,7 +11,9 @@
 ```bash
 brew install ollama structurizr
 brew services start ollama
-for m in qwen3:8b qwen3.5:9b qwen3.5:4b gemma4:e4b gemma4:12b gpt-oss:20b strands-decider; do ollama pull $m; done
+for m in qwen3:8b qwen3.5:9b qwen3.5:4b gemma4:e4b gemma4:12b gpt-oss:20b strands-decider; do
+  ollama pull "$m"
+done
 uv sync
 uv run python task3-agent/evals/llm_bench.py            # все кандидаты, thinking выключен
 uv run python task3-agent/evals/llm_bench.py --report   # сводная таблица в evals/results/summary.md
@@ -20,22 +22,33 @@ uv run python task3-agent/evals/llm_bench.py --report   # сводная таб�
 Инфраструктура и запуск графа агентов в песочнице `sbx`:
 
 ```bash
-./task3-agent/infra/lgtm.sh                             # Grafana, Prometheus, Loki, Tempo на :3001
+./task3-agent/infra/lgtm.sh                                             # Grafana, Prometheus, Loki на :3001
 docker compose -f task3-agent/infra/langfuse/docker-compose.yml up -d   # Langfuse на :3000
-./task3-agent/infra/mcp-ml.sh &                         # MCP-сервер с AppSec-тулами на :8765
-./task3-agent/infra/agent-sbx.sh                        # поднимает microVM и ставит зависимости
-sbx exec agent -- bash -lc 'cd /Users/zancrow/GitHub/LLMs/task3-agent && UV_PROJECT_ENVIRONMENT=/home/agent/.venv-sbx uv run python -m agent.graph "Что ты умеешь?"'
+./task3-agent/infra/mcp-ml.sh &                                         # MCP-сервер с AppSec-тулами на :8765
+./task3-agent/infra/agent-sbx.sh                                        # поднимает microVM и ставит зависимости
+sbx exec agent -- bash -lc "cd \"$(pwd)/task3-agent\" && \
+  UV_PROJECT_ENVIRONMENT=/home/agent/.venv-sbx uv run python -m agent.graph 'Что ты умеешь?'"
 ```
 
 Сборка PDF-отчёта `report.pdf` из этого Markdown-файла (`README.md`):
 
 ```bash
-node task3-agent/infra/build-pdf.mjs                    # офлайн-сборка task3-agent/report.pdf (или npx md-to-pdf task3-agent/README.md)
+node task3-agent/infra/build-pdf.mjs    # офлайн-сборка task3-agent/report.pdf
 ```
 
 ## Ход работы и флоу вайбкодинга
 
 Подробный дневник этапов, проблем и замеров ведётся в [JOURNAL.md](JOURNAL.md).
+
+**Этапы работы:**
+
+- **24 октября:** разбор ТЗ и критериев, выбор Ollama и `strands-decider`, проверка open-source лицензий, составление [SPEC.md](SPEC.md), C4/Mermaid-диаграмм и бенчмарк 6 LLM на 43 задачах (`evals/llm_bench.py`).
+- **25 октября:** сборка единого графа LangGraph (`agent/graph.py`), интеграция `/v1/systemone`, порог роутера `hard >= 0.85` (`pick_tier()`), обработка пустого ответа модели после тула и лимит вызовов тулов.
+- **6–8 ноября:** запуск наблюдаемости Langfuse v4 и `grafana/otel-lgtm` (Prometheus, Loki, дашборд, алерты в Telegram), изоляция в microVM `sbx`, гибридный гейт `RISKY_CODE` + decision-модель с `interrupt` и MCP-сервер.
+- **9–10 ноября:** системные промпты, `persona/` и `skills/`, кросс-семейственный валидатор `qwen3:8b`, 4 слоя памяти с би-темпоральным графом в SQLite (`agent/memory.py`), перевод на домен AppSec/SecOps и Golden-набор из 32 задач (`evals/run_evals.py`).
+- **15–16 ноября:** сквозной аудит кода и отчёта, живой прогон в `sbx` со включёнными Langfuse и `otel-lgtm`, перенастройка алертов, обновление диаграмм/скринов и сборка `report.pdf`.
+
+**Зоны ответственности:** проект выполнен индивидуально (одним участником), без разделения на подкоманды. В связке с ИИ-агентами зоны распределены явно: автор отвечает за постановку задач и ТЗ, выбор стека, ручную реализацию ключевых правил (`pick_tier()`, перехват пустого ответа специалиста), прогон сценариев и приёмку; Claude Code (`Claude Opus 5.5`) — за поэтапную разработку модулей и тестов; Google Antigravity (`Gemini 4`) — за аудит соответствия ТЗ, доработку телеметрии и синхронизацию документации с кодом.
 
 **Харнесс и пайплайн разработки:**
 
@@ -314,7 +327,18 @@ Strands Agents | цикл агента, управляемый моделью; �
 
 ## 4. Роутинг и decision-модель
 
-Decision-модель `strands-decider` (Jev-like, 2.1 ГБ) отвечает вероятностями на вопросы о запросе через `/v1/systemone`. LLM на это не тратится. В системе она решает три задачи:
+Decision-модель `strands-decider` (Jev-like, 2.1 ГБ) отвечает вероятностями на вопросы о запросе через `/v1/systemone`. LLM на это не тратится.
+
+Сравнение кандидатов для роли Jev-like / decision-модели:
+
+Кандидат | Размер | Протокол и скорость | Лицензия | Решение
+---|---|---|---|---
+**`strands-decider`** (Strands Agents, база Qwen3.5-2B) | 1.9B, MXFP8, 2.0 ГБ | `/v1/systemone` (`choice`, `noul`), около 80 мс | Apache 2.0 | **выбран**
+`tev1:4b` (Together AI, база Qwen3.5) | 4B, 4.4–4.6 ГБ | `/v1/systemone` | не указана на `ollama.com` | запасной: вдвое тяжелее по памяти (4.5 ГБ против 2.0 ГБ в лимите 17.8 ГБ GPU), нет явной OSI-лицензии
+Оригинальный `Jev` (TypeSafe AI, `ModelRouterMiddleware`) | облачный API | HTTP API | проприетарная | отказ: платный облачный сервис, нарушает требования офлайн-работы (NFR-1) и open-source (NFR-6)
+Обычная LLM промптом (`gemma4:e4b` / `qwen3:8b`) | 5.2–9.4 ГБ | `/api/chat` | Apache 2.0 | отказ: тратит генерацию токенов (0.4–1.3 с вместо 80 мс) и не отдаёт калиброванные вероятности за один проход
+
+В системе она решает три задачи:
 
 Задача | Вопрос | Что делает граф
 ---|---|---
@@ -694,6 +718,12 @@ RAGFlow | глубокий парсинг PDF/таблиц + гибридный 
 ---
 
 ## 13. Выводы и ограничения
+
+### Итог своими словами
+
+Главный практический результат работы: даже небольшая локальная модель уровня 4B–8B на обычном ноутбуке с 24 ГБ памяти способна работать как предсказуемый аудитор кода и логов, если её не оставлять один на один со свободным текстом. На старте план строился вокруг `qwen3.5:9b` как основной модели, режима `thinking` и связки Graphiti + Neo4j, но реальные замеры на машине заставили пересмотреть почти каждую гипотезу: на бенчмарке победила `gemma4:e4b` (`43/43` при `70 tok/s`), режим `thinking` только замедлил ответы в 7–11 раз без прироста точности, MLX-модели не поддерживали JSON-схему (`HTTP 501`), поэтому валидатор и экстрактор памяти пришлось вынести на GGUF-модель `qwen3:8b`, а громоздкий Neo4j — заменить лёгким би-темпоральным графом в SQLite без лишнего контейнера в бюджете RAM.
+
+Не менее важным уроком стала необходимость детерминированной страховки вокруг LLM: decision-модель отлично классифицирует русскоязычные запросы и описания угроз (`0.75`), но пропускает опасный Python-код (`shutil.rmtree` получил риск `0.13`), а сама LLM без жёстких тулов способна выдумывать номера строк или поддаться комментарию с prompt injection. В итоге надёжность системы дала не «самая умная модель», а инженерная обвязка: AST- и regex-анализаторы в MCP-сервере, кросс-семейственный валидатор по `evidence`, темпоральная инвалидация фактов вместо наивного RAG, статический фильтр `RISKY_CODE` перед `interrupt`, изоляция в microVM `sbx` и сквозная наблюдаемость через Langfuse и Grafana.
 
 ### 13.1 Главные выводы
 

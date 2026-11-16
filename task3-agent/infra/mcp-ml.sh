@@ -2,11 +2,11 @@
 # MCP-сервер AppSec-тулов (sec-tools). Работает на хосте.
 # Запускать из корня репо или как есть: скрипт сам переходит в нужный каталог.
 set -e
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/.."
 
-pkill -f "task3-agent/mcp_ml/server.py" 2>/dev/null || true
+pkill -f "[m]cp_ml/server.py" 2>/dev/null || true
 sleep 1
-nohup uv run python "$(pwd)/task3-agent/mcp_ml/server.py" > /tmp/mcp_ml.log 2>&1 &
+nohup uv run python "$(pwd)/mcp_ml/server.py" > /tmp/mcp_ml.log 2>&1 &
 echo "pid $!"
 for i in $(seq 1 15); do
   code=$(curl -s --noproxy '*' -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:8765/mcp \

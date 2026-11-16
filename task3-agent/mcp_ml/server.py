@@ -11,8 +11,8 @@ from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
 
-ROOT = Path(__file__).resolve().parents[2]
-WORKSPACE = ROOT / "task3-agent" / "workspace"
+ROOT = Path(__file__).resolve().parents[1]
+WORKSPACE = ROOT / "workspace"
 mcp = MCPServer("sec-tools")
 _tool_cache: dict[tuple, dict] = {}
 
