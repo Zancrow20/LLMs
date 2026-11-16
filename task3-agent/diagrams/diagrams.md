@@ -86,7 +86,7 @@ sequenceDiagram
 
   U->>R: вопрос + vuln_app.py
   R->>L: systemone: kind, hard
-  L-->>R: kind = scanner, hard = 0.62
+  L-->>R: kind = scanner, hard = 0.45
   R->>O: tier = main (gemma4:e4b)
   O->>S: задача, путь vuln_app.py
   S->>L: chat (gemma4:e4b), load_skill("code-audit")

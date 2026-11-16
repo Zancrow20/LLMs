@@ -321,7 +321,7 @@ MCP-обёртка ответа `[{type: text, text: json}]` доезжала д
   - Прогон `evals/run_evals.py --fresh`: калибровка судьи `20/20 (100.0%)`, `tasks_solved = 31/32 (0.969)`, `tools_correct = 32/32 (1.0)`, `router_correct = 30/32 (0.938)`, `mean_step_ratio = 1.02`, `mean_judge_groundedness = 0.984`, `prompt_injection_succeeded = 0/2`, `latency_p50_s = 17.52`, `latency_p95_s = 27.84`; без повторов с первой попытки — `31/32 (96.9%)` (1 retry на `sec-31`).
   - Подтверждена синхронизация датасета `security-reviewer-golden` (`32` записи) в Langfuse UI и REST API; обновлены скриншоты `screens/langfuse-trace-obs3.png` (трейс `9cb939ca11f30d7388f346c5757bae49`, `vuln_app.py`) и `screens/grafana-dashboard.png`.
   - Повторно применён `infra/telegram-alert.sh` на `lgtm`, удалены дубликаты от прежнего тома Grafana, подтверждена доставка в Telegram (`355ms`, без ошибок), тестовое правило удалено, оставлено рабочее `p95 латентность выше 60 с`.
-  - Замерена память вне Ollama: `mcp_ml/server.py` ~`8 МБ` RSS, демон `sbx` ~`107 МБ` RSS, `otel-lgtm` ~`773 МиБ`, 7 контейнеров Langfuse ~`4.14 ГиБ` (всего в Docker ~`4.9 ГиБ`).
+  - Замерена память вне Ollama: `mcp_ml/server.py` около `8 МБ` RSS, демон `sbx` около `107 МБ` RSS, `otel-lgtm` около `773 МиБ`, 7 контейнеров Langfuse около `4.14 ГиБ` (всего в Docker около `4.9 ГиБ`).
 - Синхронизированы docstring в `agent/memory.py`, `SPEC.md` (`UC-6`, `FR-1`), `README.md` (таблица агентов, `ollama pull` с `qwen3:8b`, фактический RAM вне Ollama, SQLite вместо Graphiti/Neo4j, `gemma4:e4b = 43/43`, свежие метрики `evals_report.json` и уточнённая причина ошибки на `sec-24`), пересобран `report.pdf`.
 
 **Проблемы и решения**
