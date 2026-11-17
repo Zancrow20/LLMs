@@ -186,17 +186,23 @@ def build() -> StateGraph:
     return g
 
 
-ALLOWED_EXT = {".py", ".js", ".ts", ".jsx", ".tsx", ".cs", ".csproj", ".go", ".java", ".sql", ".sh", ".yml", ".yaml", ".json", ".txt", ".csv", ".log"}
+ALLOWED_EXT = {
+    ".py", ".js", ".ts", ".jsx", ".tsx", ".cs", ".csproj", ".go", ".java",
+    ".sql", ".sh", ".yml", ".yaml", ".json", ".txt", ".csv", ".log", ".zip",
+}
 MAX_FILE_MB = 50
+MAX_ARCHIVE_FILES = 200
+_SKIP_SCAN_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", "dist", "build", ".unpacked"}
 _KNOWN_CHECK_EXT = (
     r"py|js|ts|jsx|tsx|cs|csproj|go|java|sql|sh|yml|yaml|json|txt|csv|log|mod|"
     r"rs|rb|php|c|cpp|h|hpp|kt|swift|xml|toml|md|avi|mp4|mp3|wav|png|jpg|jpeg|"
     r"pdf|docx|xlsx|zip|exe|bin|dll|sqlite|db|env"
 )
+_REL_DIR = r"(?:workspace[/\\])?(?:[A-Za-z0-9_-][A-Za-z0-9_.-]*[/\\])*"
 _FILE_RE = re.compile(
     rf"(?:^|[\s\"'`(])((?:\.\.?[/\\])+[^\s\"'`),;:!?]+|"
-    rf"(?:workspace[/\\])?[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(?:{_KNOWN_CHECK_EXT})(?=$|[\s\"'`),;:!?]|\.(?!\w))|"
-    rf"(?:workspace[/\\])?(?:Dockerfile(?:\.[A-Za-z0-9_.-]+)?|go\.mod)(?=$|[\s\"'`),;:!?]|\.(?!\w)))",
+    rf"{_REL_DIR}[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(?:{_KNOWN_CHECK_EXT})(?=$|[\s\"'`),;:!?]|\.(?!\w))|"
+    rf"{_REL_DIR}(?:Dockerfile(?:\.[A-Za-z0-9_.-]+)?|go\.mod)(?=$|[\s\"'`),;:!?]|\.(?!\w)))",
     re.I,
 )
 
@@ -217,15 +223,60 @@ def _extract_candidate_files(question: str) -> list[str]:
     return found
 
 
+def _validate_zip_input(p: Path, filename: str) -> str | None:
+    """Проверить zip-архив на целостность, Zip Slip и Zip Bomb до запуска графа."""
+    import stat
+    import zipfile
+
+    size_mb = p.stat().st_size / (1024 * 1024)
+    if size_mb > MAX_FILE_MB:
+        return f"Отказ FR-2: размер файла {size_mb:.1f} МБ превышает лимит {MAX_FILE_MB} МБ."
+    try:
+        with zipfile.ZipFile(p) as zf:
+            infos = [i for i in zf.infolist() if not i.is_dir()]
+            if len(infos) > MAX_ARCHIVE_FILES:
+                return f"Отказ FR-2: в архиве {filename} {len(infos)} файлов (лимит {MAX_ARCHIVE_FILES})."
+            total_unpacked = sum(i.file_size for i in infos)
+            if total_unpacked > MAX_FILE_MB * 1024 * 1024:
+                return f"Отказ FR-2: распакованный размер архива {filename} превышает лимит {MAX_FILE_MB} МБ."
+            probe_root = Path("/tmp/zip-probe").resolve()
+            for i in infos:
+                mode = i.external_attr >> 16
+                if stat.S_ISLNK(mode):
+                    return f"Отказ FR-2: архив {filename} содержит запрещённый symlink ({i.filename})."
+                if i.filename.startswith(("/", "\\")) or ":" in i.filename[:3]:
+                    return f"Отказ FR-2: опасный путь внутри архива {filename}: {i.filename} (Zip Slip)."
+                dest = (probe_root / i.filename).resolve()
+                if not dest.is_relative_to(probe_root) or dest == probe_root:
+                    return f"Отказ FR-2: путь {i.filename} выходит за пределы архива {filename} (Zip Slip)."
+    except zipfile.BadZipFile:
+        return f"Отказ FR-2: повреждённый zip-архив {filename}."
+    return None
+
+
 def check_input_file(filename: str) -> str | None:
-    """FR-2: проверить тип и размер входного файла до запуска графа."""
+    """FR-2: проверить тип и размер входного файла, каталога или zip-архива до запуска графа."""
     p = (WORKSPACE / filename).resolve()
     if not p.is_relative_to(WORKSPACE):
         return f"Отказ FR-2: путь {filename} выходит за пределы workspace/."
     if not p.exists():
         return f"Отказ FR-2: файл {filename} не найден в workspace/."
+    if p.is_dir():
+        total_bytes = 0
+        for root_str, dirs, files in os.walk(p):
+            dirs[:] = [d for d in dirs if d not in _SKIP_SCAN_DIRS]
+            for fn in files:
+                fp = Path(root_str) / fn
+                if not fp.is_symlink() and fp.is_file():
+                    total_bytes += fp.stat().st_size
+        total_mb = total_bytes / (1024 * 1024)
+        if total_mb > MAX_FILE_MB:
+            return f"Отказ FR-2: размер каталога {total_mb:.1f} МБ превышает лимит {MAX_FILE_MB} МБ."
+        return None
     if p.suffix.lower() not in ALLOWED_EXT and not p.name.lower().startswith("dockerfile") and p.name.lower() != "go.mod":
-        return f"Отказ FR-2: неподдерживаемый тип файла {p.suffix} (разрешены исходники, конфиги, зависимости и .csv/.log)."
+        return f"Отказ FR-2: неподдерживаемый тип файла {p.suffix} (разрешены исходники, конфиги, зависимости, .csv/.log, каталоги и .zip)."
+    if p.suffix.lower() == ".zip":
+        return _validate_zip_input(p, filename)
     size_mb = p.stat().st_size / (1024 * 1024)
     if size_mb > MAX_FILE_MB:
         return f"Отказ FR-2: размер файла {size_mb:.1f} МБ превышает лимит {MAX_FILE_MB} МБ."

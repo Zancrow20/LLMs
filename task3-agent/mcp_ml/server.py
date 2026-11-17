@@ -9,11 +9,25 @@ import re
 from collections import Counter
 from pathlib import Path
 
-from mcp.server.mcpserver import MCPServer
+try:
+    from mcp.server.mcpserver import MCPServer
+
+    mcp = MCPServer("sec-tools")
+    _MCP_V2 = True
+except ImportError:
+    from mcp.server.fastmcp import FastMCP
+    from mcp.server.transport_security import TransportSecuritySettings
+
+    mcp = FastMCP(
+        "sec-tools",
+        host="127.0.0.1",
+        port=8765,
+        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+    )
+    _MCP_V2 = False
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT / "workspace"
-mcp = MCPServer("sec-tools")
 _tool_cache: dict[tuple, dict] = {}
 
 LANG_BY_EXT = {
@@ -243,13 +257,88 @@ def _ast_python_findings(source: str) -> set[tuple[int, str]]:
     return hits
 
 
-@mcp.tool()
-def scan_code(path: str) -> dict:
-    """Статический анализ (SAST) файла кода или конфига в workspace/ (Python, JS/TS, C#, Go, Java, SQL, Dockerfile, YAML)."""
-    p = safe(path)
-    cache_key = ("scan_code", str(p), p.stat().st_mtime)
-    if cache_key in _tool_cache:
-        return _tool_cache[cache_key]
+_SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", "dist", "build", ".unpacked"}
+_SECRETS_EXT = set(LANG_BY_EXT) | {".env", ".ini", ".conf", ".cfg", ".toml", ".txt", ".md", ".xml", ".properties"}
+_MAX_ARCHIVE_BYTES = 50 * 1024 * 1024
+_MAX_ARCHIVE_FILES = 200
+_MAX_MULTI_ITEMS = 100
+
+
+def _extract_zip_safe(zip_path: Path) -> Path:
+    """Безопасно распаковать .zip в workspace/.unpacked/<name>/ с защитой от Zip Slip и Zip Bomb."""
+    import shutil
+    import stat
+    import zipfile
+
+    st = zip_path.stat()
+    if st.st_size > _MAX_ARCHIVE_BYTES:
+        raise ValueError(f"размер архива превышает 50 МБ: {zip_path.name}")
+    target_dir = WORKSPACE / ".unpacked" / zip_path.stem
+    target_root = target_dir.resolve()
+    meta_file = target_dir / ".zip_meta"
+    stamp = f"{st.st_mtime}:{st.st_size}"
+    if meta_file.exists() and meta_file.read_text(encoding="utf-8", errors="ignore") == stamp:
+        return target_root
+
+    with zipfile.ZipFile(zip_path) as zf:
+        infos = [i for i in zf.infolist() if not i.is_dir()]
+        if len(infos) > _MAX_ARCHIVE_FILES:
+            raise ValueError(f"в архиве {len(infos)} файлов (лимит {_MAX_ARCHIVE_FILES})")
+        if sum(i.file_size for i in infos) > _MAX_ARCHIVE_BYTES:
+            raise ValueError("распакованный размер архива превышает 50 МБ (Zip Bomb)")
+        for i in infos:
+            if stat.S_ISLNK(i.external_attr >> 16):
+                raise ValueError(f"архив содержит symlink: {i.filename}")
+            if i.filename.startswith(("/", "\\")) or ":" in i.filename[:3]:
+                raise ValueError(f"опасный путь в архиве: {i.filename}")
+            dest = (target_root / i.filename).resolve()
+            if not dest.is_relative_to(target_root) or dest == target_root:
+                raise ValueError(f"выход за пределы каталога распаковки (Zip Slip): {i.filename}")
+
+        if target_dir.exists():
+            shutil.rmtree(target_dir)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        written = 0
+        for i in infos:
+            dest = (target_root / i.filename).resolve()
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(i) as src, dest.open("wb") as dst:
+                while chunk := src.read(65536):
+                    written += len(chunk)
+                    if written > _MAX_ARCHIVE_BYTES:
+                        raise ValueError("превышен лимит 50 МБ при распаковке архива")
+                    dst.write(chunk)
+        meta_file.write_text(stamp, encoding="utf-8")
+    return target_root
+
+
+def _iter_project_files(root: Path, mode: str) -> list[Path]:
+    """Собрать поддерживаемые файлы проекта внутри root для заданного режима (code, secrets, deps)."""
+    import os
+
+    out: list[Path] = []
+    for cur, dirs, files in os.walk(root):
+        dirs[:] = sorted(d for d in dirs if d not in _SKIP_DIRS)
+        for fn in sorted(files):
+            fp = Path(cur) / fn
+            if fp.is_symlink() or not fp.is_file() or fn == ".zip_meta":
+                continue
+            low = fn.lower()
+            suf = fp.suffix.lower()
+            if mode == "code" and (suf in LANG_BY_EXT or low.startswith("dockerfile")):
+                out.append(fp)
+            elif mode == "secrets" and (suf in _SECRETS_EXT or low.startswith(("dockerfile", ".env"))):
+                out.append(fp)
+            elif mode == "deps" and (
+                low in {"package.json", "go.mod"}
+                or low.endswith(".csproj")
+                or (low.startswith("requirements") and suf == ".txt")
+            ):
+                out.append(fp)
+    return out
+
+
+def _scan_code_file(p: Path, label: str) -> dict:
     lang = _detect_lang(p)
     lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
     ast_hits = _ast_python_findings("\n".join(lines)) if lang == "python" else set()
@@ -276,25 +365,61 @@ def scan_code(path: str) -> dict:
                 })
     sev_counts = Counter(f["severity"] for f in findings)
     mean_conf = round(sum(f["confidence"] for f in findings) / len(findings), 2) if findings else 1.0
-    res = {
-        "file": path,
+    return {
+        "file": label,
         "language": lang,
         "total_findings": len(findings),
         "by_severity": dict(sev_counts),
         "mean_conf": mean_conf,
         "findings": findings,
     }
+
+
+@mcp.tool()
+def scan_code(path: str) -> dict:
+    """Статический анализ (SAST) файла, каталога проекта или .zip-архива в workspace/ (Python, JS/TS, C#, Go, Java, SQL, Dockerfile, YAML)."""
+    p = safe(path)
+    is_multi = p.is_dir() or p.suffix.lower() == ".zip"
+    if not is_multi:
+        cache_key = ("scan_code", str(p), p.stat().st_mtime)
+        if cache_key in _tool_cache:
+            return _tool_cache[cache_key]
+        res = _scan_code_file(p, path)
+        _tool_cache[cache_key] = res
+        return res
+
+    scan_root = _extract_zip_safe(p) if p.suffix.lower() == ".zip" else p
+    files = _iter_project_files(scan_root, "code")
+    stamp = p.stat().st_mtime if p.suffix.lower() == ".zip" else max((f.stat().st_mtime for f in files), default=p.stat().st_mtime)
+    cache_key = ("scan_code_dir", str(p), stamp)
+    if cache_key in _tool_cache:
+        return _tool_cache[cache_key]
+
+    all_findings = []
+    scanned = []
+    for f in files:
+        rel = f.relative_to(scan_root).as_posix()
+        scanned.append(rel)
+        sub = _scan_code_file(f, rel)
+        for item in sub["findings"]:
+            all_findings.append({"file": rel, **item})
+    sev_counts = Counter(x["severity"] for x in all_findings)
+    mean_conf = round(sum(x["confidence"] for x in all_findings) / len(all_findings), 2) if all_findings else 1.0
+    res = {
+        "file": path,
+        "scanned_files": scanned,
+        "total_files": len(scanned),
+        "total_findings": len(all_findings),
+        "by_severity": dict(sev_counts),
+        "mean_conf": mean_conf,
+        "findings": all_findings[:_MAX_MULTI_ITEMS],
+        "truncated": len(all_findings) > _MAX_MULTI_ITEMS,
+    }
     _tool_cache[cache_key] = res
     return res
 
 
-@mcp.tool()
-def scan_secrets(path: str) -> dict:
-    """Поиск захардкоженных секретов, токенов, приватных ключей и паролей в файле из workspace/."""
-    p = safe(path)
-    cache_key = ("scan_secrets", str(p), p.stat().st_mtime)
-    if cache_key in _tool_cache:
-        return _tool_cache[cache_key]
+def _scan_secrets_file(p: Path, label: str) -> dict:
     lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
     secrets = []
     for idx, raw_line in enumerate(lines, start=1):
@@ -320,32 +445,69 @@ def scan_secrets(path: str) -> dict:
                 })
                 break
     mean_conf = round(sum(s["confidence"] for s in secrets) / len(secrets), 2) if secrets else 1.0
-    res = {
-        "file": path,
+    return {
+        "file": label,
         "total_secrets": len(secrets),
         "mean_conf": mean_conf,
         "secrets": secrets,
+    }
+
+
+@mcp.tool()
+def scan_secrets(path: str) -> dict:
+    """Поиск захардкоженных секретов, токенов, приватных ключей и паролей в файле, каталоге проекта или .zip-архиве из workspace/."""
+    p = safe(path)
+    is_multi = p.is_dir() or p.suffix.lower() == ".zip"
+    if not is_multi:
+        cache_key = ("scan_secrets", str(p), p.stat().st_mtime)
+        if cache_key in _tool_cache:
+            return _tool_cache[cache_key]
+        res = _scan_secrets_file(p, path)
+        _tool_cache[cache_key] = res
+        return res
+
+    scan_root = _extract_zip_safe(p) if p.suffix.lower() == ".zip" else p
+    files = _iter_project_files(scan_root, "secrets")
+    stamp = p.stat().st_mtime if p.suffix.lower() == ".zip" else max((f.stat().st_mtime for f in files), default=p.stat().st_mtime)
+    cache_key = ("scan_secrets_dir", str(p), stamp)
+    if cache_key in _tool_cache:
+        return _tool_cache[cache_key]
+
+    all_secrets = []
+    scanned = []
+    for f in files:
+        rel = f.relative_to(scan_root).as_posix()
+        scanned.append(rel)
+        sub = _scan_secrets_file(f, rel)
+        for item in sub["secrets"]:
+            all_secrets.append({"file": rel, **item})
+    mean_conf = round(sum(x["confidence"] for x in all_secrets) / len(all_secrets), 2) if all_secrets else 1.0
+    res = {
+        "file": path,
+        "scanned_files": scanned,
+        "total_files": len(scanned),
+        "total_secrets": len(all_secrets),
+        "mean_conf": mean_conf,
+        "secrets": all_secrets[:_MAX_MULTI_ITEMS],
+        "truncated": len(all_secrets) > _MAX_MULTI_ITEMS,
     }
     _tool_cache[cache_key] = res
     return res
 
 
-@mcp.tool()
-def check_dependencies(path: str) -> dict:
-    """Аудит файла зависимостей (requirements.txt, package.json, *.csproj, go.mod) на известные CVE и незафиксированные версии."""
+def _check_deps_file(p: Path, label: str) -> dict:
     import json
 
-    p = safe(path)
-    cache_key = ("check_dependencies", str(p), p.stat().st_mtime)
-    if cache_key in _tool_cache:
-        return _tool_cache[cache_key]
     text = p.read_text(encoding="utf-8", errors="replace")
     name_lower = p.name.lower()
     packages: list[tuple[str, str, int]] = []  # (name, version, line)
 
     if name_lower == "package.json":
         ecosystem = "npm"
-        data = json.loads(text)
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            data = {}
         for section in ("dependencies", "devDependencies"):
             for pkg, ver in data.get(section, {}).items():
                 packages.append((pkg, str(ver).strip(), 1))
@@ -411,14 +573,59 @@ def check_dependencies(path: str) -> dict:
                 "description": desc,
             })
 
-    res = {
-        "file": path,
+    return {
+        "file": label,
         "ecosystem": ecosystem,
         "total_packages": len(packages),
         "vulnerable_count": len(vulnerabilities),
         "unpinned_count": len(unpinned),
         "vulnerabilities": vulnerabilities,
         "unpinned": unpinned,
+    }
+
+
+@mcp.tool()
+def check_dependencies(path: str) -> dict:
+    """Аудит зависимостей (requirements.txt, package.json, *.csproj, go.mod) в файле, каталоге проекта или .zip-архиве."""
+    p = safe(path)
+    is_multi = p.is_dir() or p.suffix.lower() == ".zip"
+    if not is_multi:
+        cache_key = ("check_dependencies", str(p), p.stat().st_mtime)
+        if cache_key in _tool_cache:
+            return _tool_cache[cache_key]
+        res = _check_deps_file(p, path)
+        _tool_cache[cache_key] = res
+        return res
+
+    scan_root = _extract_zip_safe(p) if p.suffix.lower() == ".zip" else p
+    files = _iter_project_files(scan_root, "deps")
+    stamp = p.stat().st_mtime if p.suffix.lower() == ".zip" else max((f.stat().st_mtime for f in files), default=p.stat().st_mtime)
+    cache_key = ("check_deps_dir", str(p), stamp)
+    if cache_key in _tool_cache:
+        return _tool_cache[cache_key]
+
+    all_vulns = []
+    all_unpinned = []
+    scanned = []
+    total_packages = 0
+    for f in files:
+        rel = f.relative_to(scan_root).as_posix()
+        scanned.append(rel)
+        sub = _check_deps_file(f, rel)
+        total_packages += sub["total_packages"]
+        for v in sub["vulnerabilities"]:
+            all_vulns.append({"file": rel, **v})
+        for u in sub["unpinned"]:
+            all_unpinned.append({"file": rel, **u})
+    res = {
+        "file": path,
+        "scanned_files": scanned,
+        "total_files": len(scanned),
+        "total_packages": total_packages,
+        "vulnerable_count": len(all_vulns),
+        "unpinned_count": len(all_unpinned),
+        "vulnerabilities": all_vulns[:_MAX_MULTI_ITEMS],
+        "unpinned": all_unpinned[:_MAX_MULTI_ITEMS],
     }
     _tool_cache[cache_key] = res
     return res
@@ -428,6 +635,8 @@ def check_dependencies(path: str) -> dict:
 def read_code_slice(path: str, start_line: int = 1, end_line: int = 60) -> dict:
     """Прочитать фрагмент исходного кода или конфига из workspace/ с номерами строк (до 100 строк за вызов)."""
     p = safe(path)
+    if p.is_dir() or p.suffix.lower() == ".zip":
+        raise ValueError("read_code_slice принимает конкретный файл; для каталога или .zip используй scan_code")
     lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
     start = max(1, start_line)
     end = min(len(lines), max(start, min(end_line, start + 99)))
@@ -444,4 +653,7 @@ def read_code_slice(path: str, start_line: int = 1, end_line: int = 60) -> dict:
 
 if __name__ == "__main__":
     WORKSPACE.mkdir(exist_ok=True)
-    mcp.run(transport="streamable-http", host="127.0.0.1", port=8765)
+    if _MCP_V2:
+        mcp.run(transport="streamable-http", host="127.0.0.1", port=8765)
+    else:
+        mcp.run(transport="streamable-http")

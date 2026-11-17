@@ -3,6 +3,7 @@
 __pycache__/
 workspace/*.sqlite*
 workspace/.last_trace_id
+workspace/.unpacked/
 workspace/*.avi
 workspace/*.wav
 workspace/*.jpg
